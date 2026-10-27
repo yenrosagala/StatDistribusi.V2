@@ -369,6 +369,7 @@ function transportNarrativeBox(item, isAdmin) {
 }
 
 function transportReportTab(report, isAdmin, user = { role: 'user' }) {
+  const showNarrative = user.role !== 'rekon';
   const control = `<form method="get" action="/transportasi" class="toolbar">
   <input type="hidden" name="tab" value="report">
   <label class="field-inline"><span>Provinsi</span><select name="provinsi" onchange="this.form.submit()">
@@ -390,7 +391,7 @@ function transportReportTab(report, isAdmin, user = { role: 'user' }) {
     const cards = group.items.map((item) => `<section class="dashboard-card report-card">
   <div class="card-header"><span>${escapeHtml(item.title)}</span></div>
   ${brsTable(item, { dataset: group.moda === 'Transportasi Udara' ? 'transportasi_udara' : 'transportasi_laut', provinsi: report.province, year: report.year, month: MONTH_NAMES.indexOf(report.monthName) + 1, monthName: report.monthName })}
-  ${transportNarrativeBox(item, isAdmin)}
+  ${showNarrative ? transportNarrativeBox(item, isAdmin) : ''}
 </section>`).join('');
     return `<h3 class="section-title">${icon(group.icon)} Moda: ${escapeHtml(group.moda)}</h3>${cards}`;
   }).join('');
@@ -1227,6 +1228,7 @@ function valueGrid(series, colors = {}) {
 }
 
 function reportTab(report, isAdmin, user = { role: 'user' }) {
+  const showNarrativePw = user.role !== 'rekon';
   const control = `<form method="get" action="/pariwisata" class="toolbar">
   <input type="hidden" name="tab" value="report">
   <label class="field-inline"><span>Provinsi</span><select name="provinsi" onchange="this.form.submit()">
@@ -1296,7 +1298,7 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
     });
     return `<section class="dashboard-card report-card">
   <div class="card-header"><h3>Indicator: ${escapeHtml(ind.key.toUpperCase())} — ${escapeHtml(entry.jenis)}</h3></div>
-  ${narrativeBox({ ...entry, prov: report.province, tahun: report.year, bulan: report.month, indikator: ind.key }, isAdmin)}
+  ${showNarrativePw ? narrativeBox({ ...entry, prov: report.province, tahun: report.year, bulan: report.month, indikator: ind.key }, isAdmin) : ''}
   ${table}
   <div class="chart-frame" style="height:340px"><canvas id="${canvasId}"></canvas></div>
   ${valueGrid(entry.series, { prev: PREV_COLOR, cur: CUR_COLOR })}

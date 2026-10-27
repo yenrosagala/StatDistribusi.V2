@@ -321,7 +321,7 @@ async function buildSection(moda, selected, prev) {
   };
 }
 
-async function loadTransportReport(url, periods, selected) {
+async function loadTransportReport(url, periods, selected, session = { role: 'admin' }) {
   const years = uniqueSorted(periods.map((p) => p.thn));
   const provinces = ['Papua', 'Papua Selatan', 'Papua Tengah', 'Papua Pegunungan'];
   const wantProv = url.searchParams.get('provinsi');
@@ -339,13 +339,17 @@ async function loadTransportReport(url, periods, selected) {
   const rowsBy = { transportasi_udara: udara, transportasi_laut: laut };
 
   const types = TRANSPORT_TARGETS.flatMap((t) => t.cols.map(([, label]) => `report_${t.moda}_${label}`));
+  // The rekon role is a report-only viewer: skip the narrative lookup entirely.
+  const wantsNarrative = session.role !== 'rekon';
   const cached = new Map();
-  try {
-    for (const r of await transportNarratives(types, `${province}|${monthName}|${year}`)) {
-      cached.set(r.report_type, r.narrative_text);
+  if (wantsNarrative) {
+    try {
+      for (const r of await transportNarratives(types, `${province}|${monthName}|${year}`)) {
+        cached.set(r.report_type, r.narrative_text);
+      }
+    } catch (err) {
+      console.warn(`[report] cache narasi transportasi tidak terbaca: ${err.message}`);
     }
-  } catch (err) {
-    console.warn(`[report] cache narasi transportasi tidak terbaca: ${err.message}`);
   }
 
   let tableNo = 0;
@@ -407,7 +411,7 @@ async function buildTransportasi(session, url) {
   const sections = tab === 'dashboard'
     ? await Promise.all(MODA.map((moda) => buildSection(moda, selected, prev)))
     : [];
-  const report = tab === 'report' ? await loadTransportReport(url, periods, selected) : null;
+  const report = tab === 'report' ? await loadTransportReport(url, periods, selected, session) : null;
   const admin = tab === 'admin' && session.role === 'admin' ? await buildTransportAdmin(session, url) : null;
   return transportasiPage({ user: session, periods, selected, sections, tab, report, admin });
 }
@@ -484,7 +488,7 @@ async function loadMap(url, info) {
   return data;
 }
 
-async function loadReport(url, info) {
+async function loadReport(url, info, session = { role: 'admin' }) {
   const provinces = info.length ? TARGET_PROVINCES.slice().sort() : [];
   const years = uniqueSorted(info.map((r) => r.year));
   const months = uniqueSorted(info.map((r) => r.month));
@@ -516,7 +520,7 @@ async function loadReport(url, info) {
     reportRows(province, year),
     reportDomain(),
     reportRef(province),
-    reportNarratives(province, year, month),
+    session.role === 'rekon' ? Promise.resolve([]) : reportNarratives(province, year, month),
   ]);
 
   const domain = {};
@@ -586,7 +590,7 @@ async function buildPariwisata(session, url) {  const rows = await pariwisataInf
   const requested = url.searchParams.get('tab');
   const tab = allowed.includes(requested) ? requested : allowed[0];
   const map = tab === 'map' && rows.length ? await loadMap(url, rows) : null;
-  const report = tab === 'report' && rows.length ? await loadReport(url, rows) : null;
+  const report = tab === 'report' && rows.length ? await loadReport(url, rows, session) : null;
   const admin = tab === 'admin' && session.role === 'admin'
     ? await buildPariwisataAdmin(session, url, { uploads: stagingStore, readFlash })
     : null;
