@@ -7,7 +7,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FONTS = ROOT / "templates" / "BRS PARIWISATA PAPUA SELATAN Template" / "Document fonts"
+LOCAL_FONTS = Path(__file__).resolve().parent / "public" / "fonts"
+REPO_FONTS = Path(__file__).resolve().parent.parent / "templates" / "BRS PARIWISATA PAPUA SELATAN Template" / "Document fonts"
+# Prefer the fonts shipped with node-app so the PDF renders standalone.
+FONTS = LOCAL_FONTS if LOCAL_FONTS.exists() else REPO_FONTS
 LOGO = Path(__file__).resolve().parent / "public" / "logo.png"
 
 from fpdf import FPDF  # noqa: E402

@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=../.env server.js",
     "test": "node --test test.js",
-    "export-service": "python export_service.py"
+    "export-service": "python export_service.py",
+    "templates": "node scripts/install-templates.mjs"
   },
   "engines": {
     "node": ">=22"

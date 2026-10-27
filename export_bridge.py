@@ -14,10 +14,16 @@ import logging
 import os
 import sys
 from pathlib import Path
+HERE = Path(__file__).resolve().parent
+VENDOR = HERE / "vendor" / "py"
+ROOT = HERE.parent
+# Prefer the vendored copy so node-app works standalone; fall back to the
+# sibling Streamlit project when it is present (keeps both in sync).
+for _p in (ROOT, VENDOR):  # inserted last = highest priority
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+os.chdir(HERE)  # keep relative asset paths inside node-app
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-os.chdir(ROOT)
 
 logging.disable(logging.WARNING)
 
