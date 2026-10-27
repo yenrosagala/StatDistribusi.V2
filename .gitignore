@@ -22,3 +22,7 @@ Thumbs.db
 # database backups (contain data)
 backup/
 
+
+# generated summary PDFs
+Ringkasan_*.pdf
+

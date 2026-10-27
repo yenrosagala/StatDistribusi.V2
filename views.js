@@ -1076,9 +1076,52 @@ function summaryScript() {
     return { module: p.dataset.module, year: Number(bits[0]), month: Number(bits[1]) };
   }
 
+  function apiUrl(q) {
+    return "/api/summary?module=" + encodeURIComponent(q.module) + "&year=" + q.year + "&month=" + q.month;
+  }
+
   function pdfHref(q) {
-    return "/export/summary.pdf?module=" + encodeURIComponent(q.module) +
-      "&year=" + q.year + "&month=" + q.month;
+    return "/export/summary.pdf?module=" + encodeURIComponent(q.module) + "&year=" + q.year + "&month=" + q.month;
+  }
+
+  function optionHtml(x) {
+    var label = MONTHS[x.month - 1] + " " + x.year + " (" + x.count + " justifikasi)";
+    return '<option value="' + x.year + "-" + x.month + '">' + label + "</option>";
+  }
+
+  function refresh(p) {
+    var q = params(p);
+    if (!q.year || !q.month) return;
+    setStatus(p, "Memuat...");
+    fetch(apiUrl(q), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.error) { setStatus(p, j.error, "err"); return; }
+        var cov = j.coverage || {};
+        p.querySelector(".summary-coverage").textContent = "Cakupan: " + (cov.notes || 0) + " justifikasi" +
+          (cov.cells ? " dari " + cov.cells + " sel (" + cov.percent + "%)" : "");
+        var body = p.querySelector(".summary-body");
+        var pdf = p.querySelector(".summary-pdf");
+        if (j.summary) {
+          body.innerHTML = "";
+          j.summary.split(/\\r?\\n\\r?\\n/).forEach(function (t) {
+            if (!t.trim()) return;
+            var para = document.createElement("p");
+            para.textContent = t.trim();
+            body.appendChild(para);
+          });
+          pdf.href = pdfHref(q);
+          pdf.removeAttribute("aria-disabled");
+          setStatus(p, "Ringkasan tersimpan - " + (j.model || "AI") + " - " +
+            new Date(j.generatedAt).toLocaleString("id-ID"), "ok");
+        } else {
+          body.innerHTML = "";
+          pdf.href = "#";
+          pdf.setAttribute("aria-disabled", "true");
+          setStatus(p, 'Belum ada ringkasan. Klik "Buat Ringkasan (AI)".');
+        }
+      })
+      .catch(function () { setStatus(p, "Tidak dapat menghubungi server.", "err"); });
   }
 
   function loadPeriods(p) {
@@ -1087,49 +1130,14 @@ function summaryScript() {
       .then(function (j) {
         var sel = p.querySelector(".summary-period");
         if (!j.periods || !j.periods.length) {
-          sel.innerHTML = "<option value=\"\">Belum ada justifikasi</option>";
+          sel.innerHTML = '<option value="">Belum ada justifikasi</option>';
           setStatus(p, "Belum ada justifikasi tersimpan untuk modul ini.", "err");
           return;
         }
-        sel.innerHTML = j.periods.map(function (x) {
-          return "<option value=\"" + x.year + "-" + x.month + "\">" + MONTHS[x.month - 1] + " " + x.year +
-            " (" + x.count + " justifikasi)</option>";
-        }).join("");
+        sel.innerHTML = j.periods.map(optionHtml).join("");
         refresh(p);
       })
       .catch(function () { setStatus(p, "Gagal memuat periode.", "err"); });
-  }
-
-  function refresh(p) {
-    var q = params(p);
-    if (!q.year || !q.month) return;
-    setStatus(p, "Memuat…");
-    fetch("/api/summary?module=" + encodeURIComponent(q.module) + "&year=" + q.year + "&month=" + q.month,
-      { credentials: "same-origin" })
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (j.error) { setStatus(p, j.error, "err"); return; }
-        var cov = j.coverage || {};
-        p.querySelector(".summary-coverage").textContent =
-          "Cakupan: " + (cov.notes || 0) + " justifikasi" +
-          (cov.cells ? " dari " + cov.cells + " sel (" + cov.percent + "%)" : "");
-        var body = p.querySelector(".summary-body");
-        var pdf = p.querySelector(".summary-pdf");
-        if (j.summary) {
-          body.innerHTML = j.summary.split(/\\n{2,}/).map(function (t) {
-            var d = document.createElement("div"); d.textContent = t; return "<p>" + d.innerHTML + "</p>";
-          }).join("");
-          pdf.href = pdfHref(q);
-          pdf.removeAttribute("aria-disabled");
-          setStatus(p, "Ringkasan tersimpan · " + (j.model || "AI") + " · " + new Date(j.generatedAt).toLocaleString("id-ID"), "ok");
-        } else {
-          body.innerHTML = "";
-          pdf.href = "#";
-          pdf.setAttribute("aria-disabled", "true");
-          setStatus(p, "Belum ada ringkasan. Klik \"Buat Ringkasan (AI)\".");
-        }
-      })
-      .catch(function () { setStatus(p, "Tidak dapat menghubungi server.", "err"); });
   }
 
   panels.forEach(function (p) {
@@ -1139,9 +1147,8 @@ function summaryScript() {
       if (!q.year || !q.month) return;
       var btn = p.querySelector(".summary-generate");
       btn.disabled = true;
-      setStatus(p, "Membuat ringkasan dengan AI… (bisa 10-60 detik)");
-      fetch("/api/summary?module=" + encodeURIComponent(q.module) + "&year=" + q.year + "&month=" + q.month,
-        { method: "POST", credentials: "same-origin" })
+      setStatus(p, "Membuat ringkasan dengan AI... (10-60 detik)");
+      fetch(apiUrl(q), { method: "POST", credentials: "same-origin" })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
           btn.disabled = false;
