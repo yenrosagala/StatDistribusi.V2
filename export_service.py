@@ -13,11 +13,15 @@ Routes:
     POST /export   -> body {"kind": ..., "payload": {...}} -> binary file
 """
 import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, __file__.rsplit("\\", 1)[0].rsplit("/", 1)[0])
 import export_bridge  # noqa: E402  (chdir + sys.path setup happens in the module)
+import gen_summary  # noqa: E402
+import summary_pdf  # noqa: E402
+import tempfile  # noqa: E402
 
 MIME = {
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -58,6 +62,47 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/summary":
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                req = json.loads(self.rfile.read(length) or b"{}")
+            except Exception as exc:
+                return self._send_json(400, {"error": "payload JSON tidak valid: %s" % exc})
+            try:
+                result = gen_summary.summarise(req)
+            except Exception as exc:
+                return self._send_json(500, {"error": "%s: %s" % (type(exc).__name__, exc)})
+            return self._send_json(500 if result.get("error") else 200, result)
+
+        if self.path == "/summary-pdf":
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                req = json.loads(self.rfile.read(length) or b"{}")
+            except Exception as exc:
+                return self._send_json(400, {"error": "payload JSON tidak valid: %s" % exc})
+            tmp = None
+            try:
+                fd, tmp = tempfile.mkstemp(suffix=".pdf")
+                os.close(fd)
+                summary_pdf.build(req, tmp)
+                with open(tmp, "rb") as handle:
+                    data = handle.read()
+            except Exception as exc:
+                return self._send_json(500, {"error": "%s: %s" % (type(exc).__name__, exc)})
+            finally:
+                if tmp and os.path.exists(tmp):
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            _log("[export-service] summary-pdf %d bytes" % len(data))
+            return
+
         if self.path != "/export":
             return self._send_json(404, {"error": "not found"})
         length = int(self.headers.get("Content-Length") or 0)

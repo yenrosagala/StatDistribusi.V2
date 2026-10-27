@@ -28,6 +28,8 @@ import Busboy from 'busboy';
 import { EXPORT_MIME, checkExporter, exportFileName, runExport } from './export.js';
 import { deleteStaged, getStaged, pruneStaged, putStaged, stagingStore } from './upload-store.js';
 import { cellKey, getNote, normaliseCell, noteKeysFor, saveNote } from './growth-notes.js';
+import { collectNotes, getCached, hashNotes, monthName, notePeriods, saveSummary } from './growth-summary.js';
+import { generateSummary, renderSummaryPdf } from './summary-client.js';
 import { buildSeries, isKnownIndicator } from './growth-series.js';
 import { buildPariwisataAdmin } from './pariwisata-admin.js';
 import {
@@ -1040,6 +1042,98 @@ const requestHandler = async (req, res) => {
       return;
     }
 
+    const summaryParams = () => ({
+      module: String(url.searchParams.get('module') || ''),
+      year: Number(url.searchParams.get('year')),
+      month: Number(url.searchParams.get('month')),
+    });
+
+    if (url.pathname === '/api/summary/periods' && req.method === 'GET') {
+      const module = String(url.searchParams.get('module') || '');
+      if (!['pariwisata', 'transportasi'].includes(module)) {
+        return json(res, { error: 'Modul tidak dikenal.' }, 400);
+      }
+      try {
+        return json(res, { periods: await notePeriods(module) });
+      } catch (err) {
+        return json(res, { error: err.message }, 500);
+      }
+    }
+    if (url.pathname === '/api/summary' && req.method === 'GET') {
+      const p = summaryParams();
+      if (!['pariwisata', 'transportasi'].includes(p.module) || !Number.isInteger(p.year) || !Number.isInteger(p.month)) {
+        return json(res, { error: 'Parameter tidak lengkap.' }, 400);
+      }
+      try {
+        const { notes, coverage } = await collectNotes(p.module, p.year, p.month);
+        const hash = hashNotes(notes);
+        const cached = await getCached(p.module, p.year, p.month, hash);
+        return json(res, {
+          module: p.module, year: p.year, month: p.month,
+          periodLabel: `${monthName(p.month)} ${p.year}`,
+          notes, coverage,
+          summary: cached ? cached.summary : null,
+          model: cached ? cached.model : null,
+          generatedAt: cached ? cached.created_at : null,
+        });
+      } catch (err) {
+        console.warn(`[summary] ${err.message}`);
+        return json(res, { error: err.message }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/summary' && req.method === 'POST') {
+      if (session.role !== 'admin') return json(res, { error: 'Hanya admin' }, 403);
+      const p = summaryParams();
+      if (!['pariwisata', 'transportasi'].includes(p.module) || !Number.isInteger(p.year) || !Number.isInteger(p.month)) {
+        return json(res, { error: 'Parameter tidak lengkap.' }, 400);
+      }
+      try {
+        const { notes, coverage } = await collectNotes(p.module, p.year, p.month);
+        if (!notes.length) return json(res, { error: 'Belum ada justifikasi pada periode ini.' }, 400);
+        const hash = hashNotes(notes);
+        const body = await generateSummary({
+          module: p.module, year: p.year, month: p.month,
+          coverage, notes,
+        });
+        const saved = await saveSummary({
+          module: p.module, year: p.year, month: p.month, inputHash: hash,
+          model: body.source, summary: body.summary,
+          noteCount: coverage.notes, cellCount: coverage.cells,
+        });
+        return json(res, { ok: true, summary: saved.summary, model: saved.model, coverage, generatedAt: saved.created_at });
+      } catch (err) {
+        console.warn(`[summary] gagal: ${err.message}`);
+        return json(res, { error: err.message }, 502);
+      }
+    }
+
+    if (url.pathname === '/export/summary.pdf' && req.method === 'GET') {
+      if (session.role !== 'admin') return sendHtml(res, errorPage('Akses admin diperlukan.'), 403);
+      const p = summaryParams();
+      if (!['pariwisata', 'transportasi'].includes(p.module) || !Number.isInteger(p.year) || !Number.isInteger(p.month)) {
+        return sendHtml(res, errorPage('Parameter tidak lengkap.'), 400);
+      }
+      try {
+        const { notes, coverage } = await collectNotes(p.module, p.year, p.month);
+        if (!notes.length) return sendHtml(res, errorPage('Belum ada justifikasi pada periode ini.'), 404);
+        const hash = hashNotes(notes);
+        const cached = await getCached(p.module, p.year, p.month, hash);
+        if (!cached) {
+          return sendHtml(res, errorPage('Ringkasan belum dibuat. Klik "Buat Ringkasan" terlebih dahulu.'), 409);
+        }
+        const pdf = await renderSummaryPdf({
+          module: p.module, year: p.year, month: p.month,
+          summary: cached.summary, source: cached.model || 'AI',
+          notes, coverage,
+        });
+        return sendFile(res, pdf, 'application/pdf',
+          `Ringkasan_Justifikasi_${p.module}_${monthName(p.month)}_${p.year}.pdf`);
+      } catch (err) {
+        console.warn(`[summary] pdf gagal: ${err.message}`);
+        return sendHtml(res, errorPage(err.message), 500);
+      }
+    }
     if (url.pathname === '/api/growth' && req.method === 'GET') {
       const cell = normaliseCell(Object.fromEntries(url.searchParams));
       if (!cell) return json(res, { error: 'Parameter sel tidak lengkap.' }, 400);

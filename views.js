@@ -1,5 +1,6 @@
 import { INV_MONTH_MAP, MONTH_NAMES, escapeHtml, formatIdNumber, monthNameEn, periodLabel } from './lib.js';
 import { icon } from './icons.js';
+import { summaryPanel } from './summary-panel.js';
 
 import { italicizeEnglish } from './lib-transport.js';
 import { pariwisataAdminView } from './pariwisata-admin-view.js';
@@ -159,7 +160,7 @@ ${body}
   </main>
 </div>
 ${scripts}
-${growthScript()}
+${growthScript()}${summaryScript()}
 </body>
 </html>`;
 }
@@ -598,6 +599,7 @@ export function transportAdminTab(admin) {
     { key: 'edit', icon: icon('edit'), label: 'Koreksi Manual', html: adminEditPanel(admin) },
     { key: 'delete', icon: icon('trash'), label: 'Pengaturan & Hapus', html: adminDeletePanel(admin) },
     { key: 'series', icon: icon('chart'), label: 'Analisis Tren', html: adminSeriesPanel(admin) },
+    { key: 'summary', icon: icon('edit'), label: 'Ringkasan Justifikasi (AI)', html: summaryPanel('transportasi') },
   ];
 
   const folds = sections.map((s) => `
@@ -1049,6 +1051,106 @@ function growthScript() {
         });
       })
       .catch(function () { /* markers are best-effort */ });
+  });
+})();
+</script>`;
+}
+
+
+function summaryScript() {
+  return `<script>
+(function () {
+  var panels = document.querySelectorAll(".summary-panel");
+  if (!panels.length) return;
+  var MONTHS = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+
+  function setStatus(p, msg, tone) {
+    var el = p.querySelector(".summary-status");
+    el.textContent = msg || "";
+    el.style.color = tone === "err" ? "var(--negative)" : tone === "ok" ? "var(--positive)" : "";
+  }
+
+  function params(p) {
+    var val = p.querySelector(".summary-period").value || "";
+    var bits = val.split("-");
+    return { module: p.dataset.module, year: Number(bits[0]), month: Number(bits[1]) };
+  }
+
+  function pdfHref(q) {
+    return "/export/summary.pdf?module=" + encodeURIComponent(q.module) +
+      "&year=" + q.year + "&month=" + q.month;
+  }
+
+  function loadPeriods(p) {
+    fetch("/api/summary/periods?module=" + encodeURIComponent(p.dataset.module), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var sel = p.querySelector(".summary-period");
+        if (!j.periods || !j.periods.length) {
+          sel.innerHTML = "<option value=\"\">Belum ada justifikasi</option>";
+          setStatus(p, "Belum ada justifikasi tersimpan untuk modul ini.", "err");
+          return;
+        }
+        sel.innerHTML = j.periods.map(function (x) {
+          return "<option value=\"" + x.year + "-" + x.month + "\">" + MONTHS[x.month - 1] + " " + x.year +
+            " (" + x.count + " justifikasi)</option>";
+        }).join("");
+        refresh(p);
+      })
+      .catch(function () { setStatus(p, "Gagal memuat periode.", "err"); });
+  }
+
+  function refresh(p) {
+    var q = params(p);
+    if (!q.year || !q.month) return;
+    setStatus(p, "Memuat…");
+    fetch("/api/summary?module=" + encodeURIComponent(q.module) + "&year=" + q.year + "&month=" + q.month,
+      { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.error) { setStatus(p, j.error, "err"); return; }
+        var cov = j.coverage || {};
+        p.querySelector(".summary-coverage").textContent =
+          "Cakupan: " + (cov.notes || 0) + " justifikasi" +
+          (cov.cells ? " dari " + cov.cells + " sel (" + cov.percent + "%)" : "");
+        var body = p.querySelector(".summary-body");
+        var pdf = p.querySelector(".summary-pdf");
+        if (j.summary) {
+          body.innerHTML = j.summary.split(/\\n{2,}/).map(function (t) {
+            var d = document.createElement("div"); d.textContent = t; return "<p>" + d.innerHTML + "</p>";
+          }).join("");
+          pdf.href = pdfHref(q);
+          pdf.removeAttribute("aria-disabled");
+          setStatus(p, "Ringkasan tersimpan · " + (j.model || "AI") + " · " + new Date(j.generatedAt).toLocaleString("id-ID"), "ok");
+        } else {
+          body.innerHTML = "";
+          pdf.href = "#";
+          pdf.setAttribute("aria-disabled", "true");
+          setStatus(p, "Belum ada ringkasan. Klik \"Buat Ringkasan (AI)\".");
+        }
+      })
+      .catch(function () { setStatus(p, "Tidak dapat menghubungi server.", "err"); });
+  }
+
+  panels.forEach(function (p) {
+    p.querySelector(".summary-period").addEventListener("change", function () { refresh(p); });
+    p.querySelector(".summary-generate").addEventListener("click", function () {
+      var q = params(p);
+      if (!q.year || !q.month) return;
+      var btn = p.querySelector(".summary-generate");
+      btn.disabled = true;
+      setStatus(p, "Membuat ringkasan dengan AI… (bisa 10-60 detik)");
+      fetch("/api/summary?module=" + encodeURIComponent(q.module) + "&year=" + q.year + "&month=" + q.month,
+        { method: "POST", credentials: "same-origin" })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          btn.disabled = false;
+          if (!res.ok) { setStatus(p, res.j.error || "Gagal membuat ringkasan.", "err"); return; }
+          refresh(p);
+        })
+        .catch(function () { btn.disabled = false; setStatus(p, "Tidak dapat menghubungi server.", "err"); });
+    });
+    loadPeriods(p);
   });
 })();
 </script>`;

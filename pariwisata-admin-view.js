@@ -1,5 +1,6 @@
 import { MONTH_NAMES, escapeHtml, formatIdNumber } from './lib.js';
 import { icon } from './icons.js';
+import { summaryPanel } from './summary-panel.js';
 
 const TABS = [
   { key: 'upload', label: '📥 Ingesti Data (Upload)' },
@@ -197,6 +198,7 @@ export function pariwisataAdminView(admin = {}) {
     { key: 'edit', icon: icon('edit'), label: 'Koreksi Manual', html: editPanel(admin.edit || {}) },
     { key: 'delete', icon: icon('trash'), label: 'Hapus Data', html: deletePanel(admin.del || {}) },
     { key: 'series', icon: icon('chart'), label: 'Data Series Graph', html: seriesPanel(form) },
+    { key: 'summary', icon: icon('edit'), label: 'Ringkasan Justifikasi (AI)', html: summaryPanel('pariwisata') },
   ];
 
   const folds = sections.map((s) => `
