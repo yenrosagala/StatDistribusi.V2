@@ -452,3 +452,8 @@ textarea:focus-visible, summary:focus-visible, .landing-card:focus-visible {
   .growth-kpi-value { font-size: 26px; }
   .growth-kpi { gap: 10px; }
 }
+
+/* Growth colour coding, matching the Streamlit table's pos/neg convention. */
+.growth-cell.pos { color: var(--positive); }
+.growth-cell.neg { color: var(--negative); }
+.growth-cell.pos:hover, .growth-cell.neg:hover { color: var(--primary); }

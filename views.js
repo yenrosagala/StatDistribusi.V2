@@ -832,7 +832,8 @@ function growthCellButton(cell, text) {
     growth_value: Number(cell.growth_value),
   }));
   const label = escapeHtml(cell.label || 'Buka tren dan justifikasi');
-  return `<button type="button" class="growth-cell" data-cell="${payload}"`
+  const tone = Number(cell.growth_value) > 0 ? ' pos' : Number(cell.growth_value) < 0 ? ' neg' : '';
+  return `<button type="button" class="growth-cell${tone}" data-cell="${payload}"`
     + ` aria-haspopup="dialog" title="${label}">${escapeHtml(text)}</button>`;
 }
 
@@ -893,34 +894,41 @@ function growthScript() {
     el.style.color = tone === 'err' ? 'var(--negative)' : tone === 'ok' ? 'var(--positive)' : '';
   }
 
-  function drawChart(series) {
+  function drawChart(series, cell) {
     var el = $('growth-chart');
     if (!el || typeof Chart === "undefined") return;
     if (chart) { chart.destroy(); chart = null; }
     var nf = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
-    chart = new Chart(el, {
-      type: "line",
-      data: {
-        labels: series.labels,
-        datasets: [
+    // M-to-M is a within-year story: plot only the current year up to the
+    // selected month and drop the previous-year line.
+    var mom = cell && (cell.comparison === "mtm" || cell.comparison === "dprev");
+    var upto = cell ? Math.max(1, Math.min(12, Number(cell.month) || 12)) : 12;
+    var labels = mom ? series.labels.slice(0, upto) : series.labels;
+    var datasets = mom
+      ? [{ label: String(series.years[1]), data: series.current.slice(0, upto),
+          borderColor: "#ED7D31", backgroundColor: "#ED7D31", borderWidth: 3,
+          pointRadius: 4, tension: 0.25, spanGaps: true }]
+      : [
           { label: String(series.years[0]), data: series.previous, borderColor: "#70AD47",
             backgroundColor: "#70AD47", borderWidth: 3, pointRadius: 3, tension: 0.25, spanGaps: true },
           { label: String(series.years[1]), data: series.current, borderColor: "#ED7D31",
             backgroundColor: "#ED7D31", borderWidth: 3, pointRadius: 3, tension: 0.25, spanGaps: true }
-        ]
-      },
+        ];
+    chart = new Chart(el, {
+      type: "line",
+      data: { labels: labels, datasets: datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
         scales: { x: { grid: { display: false } }, y: { beginAtZero: false,
           ticks: { callback: function (v) { return nf.format(v); } } } },
-        plugins: { legend: { position: "bottom" } }
+        plugins: { legend: { position: "bottom", display: !mom } }
       }
     });
   }
 
   function render(data) {
-    drawChart(data.series);
+    drawChart(data.series, data.cell);
     $('growth-title').textContent = labelFor(data.cell);
     var v = data.cell.growth_value;
     var kpi = $('growth-kpi-value');
@@ -936,12 +944,16 @@ function growthScript() {
     $('growth-kpi-label').textContent = data.cell.indicator.replace(/_/g, ' ').toUpperCase()
       + '  \u00b7  ' + (cmpNames[data.cell.comparison] || data.cell.comparison);
     var mi = data.cell.month - 1;
+    var momCmp = data.cell.comparison === "mtm" || data.cell.comparison === "dprev";
     var cur = data.series.current[mi];
-    var prev = data.series.previous[mi];
-    $('growth-kpi-compare').textContent = 'Bulan ini: '
+    var base = momCmp ? data.series.current[mi - 1] : data.series.previous[mi];
+    var baseLabel = momCmp
+      ? (mi > 0 ? data.series.labels[mi - 1] : "—")
+      : String(data.series.years[0]);
+    $('growth-kpi-compare').textContent = (momCmp ? data.series.labels[mi] + ': ' : 'Bulan ini: ')
       + (cur == null ? '\u2014' : nf.format(cur))
-      + '   \u00b7   ' + data.series.years[0] + ': '
-      + (prev == null ? '\u2014' : nf.format(prev));
+      + '   \u00b7   ' + baseLabel + ': '
+      + (base == null ? '\u2014' : nf.format(base));
     $('growth-reason').value = data.note ? data.note.reason : '';
     $('growth-meta').textContent = data.note
       ? 'Terakhir diubah oleh ' + data.note.author + ' pada ' + new Date(data.note.updated_at).toLocaleString('id-ID')
@@ -953,7 +965,11 @@ function growthScript() {
     try { cell = JSON.parse(btn.dataset.cell); } catch (err) { return; }
     dlg.showModal();
     $('growth-title').textContent = 'Memuat…';
-    $('growth-sub').textContent = '';
+    var kpi0 = $('growth-kpi-value');
+    kpi0.textContent = '\u2014';
+    kpi0.className = 'growth-kpi-value';
+    $('growth-kpi-label').textContent = '';
+    $('growth-kpi-compare').textContent = '';
     $('growth-reason').value = '';
     $('growth-meta').textContent = '';
     status('Memuat data…');
