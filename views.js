@@ -840,15 +840,20 @@ function growthCellButton(cell, text) {
 function growthDialog() {
   return `<dialog id="growth-dialog" class="growth-dialog">
   <div class="growth-head">
-    <div>
+    <div class="growth-head-main">
       <h3 id="growth-title">Tren &amp; justifikasi</h3>
-      <p id="growth-sub" class="muted"></p>
+      <div class="growth-kpi">
+        <span id="growth-kpi-value" class="growth-kpi-value">&mdash;</span>
+        <span class="growth-kpi-text">
+          <span id="growth-kpi-label" class="growth-kpi-label"></span>
+          <span id="growth-kpi-compare" class="growth-kpi-compare"></span>
+        </span>
+      </div>
     </div>
     <button type="button" class="growth-close" id="growth-close" aria-label="Tutup">&#10005;</button>
   </div>
   <div class="growth-body">
     <div class="chart-frame" style="height:250px"><canvas id="growth-chart"></canvas></div>
-    <div id="growth-table" class="growth-table"></div>
     <div class="growth-note">
       <label for="growth-reason"><b>Justifikasi / fenomena</b>
         <span class="muted">mengapa perubahan ini terjadi?</span></label>
@@ -918,8 +923,25 @@ function growthScript() {
     drawChart(data.series);
     $('growth-title').textContent = labelFor(data.cell);
     var v = data.cell.growth_value;
-    $('growth-sub').textContent = (v == null ? 'Tanpa pembanding' : (v > 0 ? '+' : '') + v.toFixed(2) + '%')
-      + ' · ' + data.cell.indicator;
+    var kpi = $('growth-kpi-value');
+    var nf = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
+    if (v == null) {
+      kpi.textContent = '\u2014';
+      kpi.className = 'growth-kpi-value';
+    } else {
+      kpi.textContent = (v > 0 ? '+' : '') + nf.format(v) + '%';
+      kpi.className = 'growth-kpi-value ' + (v > 0 ? 'up' : v < 0 ? 'down' : 'flat');
+    }
+    var cmpNames = { mtm: 'M-to-M', yoy: 'Y-on-Y', dprev: 'vs bulan lalu', dlast: 'vs tahun lalu' };
+    $('growth-kpi-label').textContent = data.cell.indicator.replace(/_/g, ' ').toUpperCase()
+      + '  \u00b7  ' + (cmpNames[data.cell.comparison] || data.cell.comparison);
+    var mi = data.cell.month - 1;
+    var cur = data.series.current[mi];
+    var prev = data.series.previous[mi];
+    $('growth-kpi-compare').textContent = 'Bulan ini: '
+      + (cur == null ? '\u2014' : nf.format(cur))
+      + '   \u00b7   ' + data.series.years[0] + ': '
+      + (prev == null ? '\u2014' : nf.format(prev));
     $('growth-reason').value = data.note ? data.note.reason : '';
     $('growth-meta').textContent = data.note
       ? 'Terakhir diubah oleh ' + data.note.author + ' pada ' + new Date(data.note.updated_at).toLocaleString('id-ID')

@@ -427,3 +427,28 @@ textarea:focus-visible, summary:focus-visible, .landing-card:focus-visible {
   .growth-dialog { width: 100vw; max-height: 100vh; border-radius: 0; }
   .growth-body { max-height: calc(100vh - 150px); }
 }
+
+/* Prominent KPI inside the growth dialog */
+.growth-head-main { display: flex; flex-direction: column; gap: 6px; }
+.growth-kpi { display: flex; align-items: baseline; gap: 14px; margin-top: 2px; }
+.growth-kpi-value {
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.growth-kpi-value.up { color: var(--positive); }
+.growth-kpi-value.down { color: var(--negative); }
+.growth-kpi-value.flat { color: var(--ink-dim); }
+.growth-kpi-text { display: flex; flex-direction: column; gap: 3px; }
+.growth-kpi-label {
+  font-size: 12.5px; font-weight: 700; color: var(--ink);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.growth-kpi-compare { font-family: var(--font-mono); font-size: 13px; color: var(--ink-dim); }
+@media (max-width: 640px) {
+  .growth-kpi-value { font-size: 26px; }
+  .growth-kpi { gap: 10px; }
+}
