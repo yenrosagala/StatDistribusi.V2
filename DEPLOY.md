@@ -97,7 +97,7 @@ node-app/
     modules/              <- ai_backup, config, database, report_page,
                              etl_engine, indesign_export, indesign_pariwisata
   public/fonts/           <- Lato TTFs used by the summary PDF
-  templates/              <- IDML templates (57 MB, installed separately)
+  templates/              <- IDML templates (57.7 MB, committed)
 ```
 
 ## Setup
@@ -110,9 +110,10 @@ npm run export-service   # terminal 1 (AI summary + document exports)
 npm start                # terminal 2
 ```
 
-`npm run templates` copies the InDesign templates from a sibling checkout
-(`../templates`) or from `$TEMPLATES_SRC`. They are ~57 MB of Adobe assets and
-are git-ignored, so a fresh clone must run this once.
+The InDesign templates ship with the repository (`templates/`, 57.7 MB of Adobe
+assets, 42 files), so a fresh clone is ready to export IDML immediately.
+`npm run templates` remains available to refresh them from a sibling checkout
+or from `$TEMPLATES_SRC`.
 
 ## Configuration
 
@@ -133,7 +134,7 @@ So a standalone clone works with plain environment variables alone.
 | **AI summary** | vendored `ai_backup` + API key |
 | **Summary PDF** | vendored fonts |
 | PPTX / DOCX / XLSX export | vendored modules |
-| **IDML export** | vendored modules **+ `npm run templates`** |
+| **IDML export** | vendored modules (templates are included) |
 
 If `templates/` is missing, IDML export fails with an explicit
 "Template InDesign ... tidak ditemukan" message; everything else is unaffected.

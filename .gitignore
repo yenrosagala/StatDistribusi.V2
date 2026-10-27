@@ -8,10 +8,6 @@ vendor/ui-ux-pro-max/
 __pycache__/
 *.pyc
 
-# IDML/InDesign templates: 57 MB of Adobe assets. Installed with
-# `npm run templates` (see DEPLOY.md) rather than committed to git.
-templates/
-
 # runtime output
 exports/
 *.log
