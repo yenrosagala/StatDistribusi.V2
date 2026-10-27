@@ -26,6 +26,7 @@ import {
 import { PEMETAAN_WILAYAH, computeUploadStats, countExistingRows, detectFileMetadata, parseTransportFile, savePeriod } from './etl-transport.js';
 import Busboy from 'busboy';
 import { EXPORT_MIME, checkExporter, exportFileName, runExport } from './export.js';
+import { deleteStaged, getStaged, pruneStaged, putStaged, stagingStore } from './upload-store.js';
 import { buildPariwisataAdmin } from './pariwisata-admin.js';
 import {
   PARIWISATA_SHEET, parsePariwisataFile, savePariwisata, countExistingPeriods,
@@ -38,7 +39,7 @@ const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('he
 const COOKIE = 'sid';
 const SESSION_SECONDS = 8 * 3600;
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
-const ROOT_DIR = fileURLToPath(new URL('..', import.meta.url));
+// ROOT_DIR kept for reference: assets are served from public/ now.
 
 const USERS = {
   admin: { password: process.env.LOGIN_ADMIN_PASSWORD || 'admin123', role: 'admin', name: 'Database Administrator' },
@@ -195,10 +196,8 @@ function readBody(req, limit = 10_000) {
 }
 
 async function serveStatic(res, pathname) {
-  // ponytail: style.css/logo.png/map geometry stay in the repo root; serving them
-  // from there avoids a second copy drifting from the Streamlit app.
-  const inRoot = ['/style.css', '/logo.png', '/papua_provinces.json'].includes(pathname);
-  const root = inRoot ? ROOT_DIR : PUBLIC_DIR;
+  // Assets live in public/ so the Vercel bundle can serve them.
+  const root = PUBLIC_DIR;
   const file = path.join(root, path.basename(pathname));
   try {
     const data = await fs.readFile(file);
@@ -566,24 +565,19 @@ async function buildPariwisata(session, url) {  const rows = await pariwisataInf
   const map = tab === 'map' && rows.length ? await loadMap(url, rows) : null;
   const report = tab === 'report' && rows.length ? await loadReport(url, rows) : null;
   const admin = tab === 'admin' && session.role === 'admin'
-    ? await buildPariwisataAdmin(session, url, { uploads: UPLOADS, readFlash })
+    ? await buildPariwisataAdmin(session, url, { uploads: stagingStore, readFlash })
     : null;
   return pariwisataPage({ user: session, info: { rows, provCount, metrics }, periods, tab, map, report, admin });
 }
 
 
-const UPLOADS = new Map();
-const UPLOAD_TTL = 30 * 60 * 1000;
 
 function stageKey() {
   return crypto.randomBytes(12).toString('hex');
 }
 
-function pruneUploads() {
-  const now = Date.now();
-  for (const [key, value] of UPLOADS) {
-    if (now - value.at > UPLOAD_TTL) UPLOADS.delete(key);
-  }
+async function pruneUploads() {
+  await pruneStaged();
 }
 
 function parseMultipart(req) {
@@ -636,7 +630,7 @@ async function buildTransportAdmin(session, url) {
 
   // ---- upload -----------------------------------------------------------
   const stage = url.searchParams.get('stage');
-  const record = stage ? UPLOADS.get(stage) : null;
+  const record = stage ? await getStaged(stage) : null;
   admin.upload = {
     stage: record ? stage : null,
     files: record
@@ -710,7 +704,7 @@ function provinceList() {
   return Object.keys(PEMETAAN_WILAYAH);
 }
 
-const server = http.createServer(async (req, res) => {
+const requestHandler = async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
   try {
@@ -761,13 +755,13 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname.startsWith('/transportasi/admin/')) {
       if (session.role !== 'admin') return sendHtml(res, errorPage('Akses admin diperlukan.'), 403);
-      pruneUploads();
+      await pruneUploads();
 
       if (req.method === 'POST' && url.pathname === '/transportasi/admin/upload') {
         const { files } = await parseMultipart(req);
         if (!files.length) return redirect(res, flash('/transportasi?tab=admin&sub=upload', 'Tidak ada berkas yang diunggah.', false));
         const token = stageKey();
-        UPLOADS.set(token, {
+        await putStaged(token, {
           at: Date.now(),
           files: files.map((f) => ({
             nama_file: f.name,
@@ -781,7 +775,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'POST' && url.pathname === '/transportasi/admin/preview') {
         const form = new URLSearchParams(await readBody(req));
-        const record = UPLOADS.get(form.get('stage'));
+        const record = await getStaged(form.get('stage'));
         if (!record) return redirect(res, flash('/transportasi?tab=admin&sub=upload', 'Sesi unggahan kedaluwarsa. Unggah ulang berkas.', false));
         const preview = [];
         for (const [index, file] of record.files.entries()) {
@@ -805,13 +799,14 @@ const server = http.createServer(async (req, res) => {
         }
         record.preview = preview;
         record.metaInputs = preview.map((p) => ({ tahun: p.tahun, bulan: p.bulan }));
+        await putStaged(form.get('stage'), record);
         return redirect(res, `/transportasi?tab=admin&sub=upload&stage=${form.get('stage')}&preview=1`);
       }
 
       if (req.method === 'POST' && url.pathname === '/transportasi/admin/save') {
         const form = new URLSearchParams(await readBody(req));
         const token = form.get('stage');
-        const record = UPLOADS.get(token);
+        const record = await getStaged(token);
         if (!record || !record.preview) return redirect(res, flash('/transportasi?tab=admin&sub=upload', 'Sesi unggahan kedaluwarsa. Unggah ulang berkas.', false));
         if (form.get('confirm') !== '1') return redirect(res, flash(`/transportasi?tab=admin&sub=upload&stage=${token}&preview=1`, 'Centang konfirmasi sebelum menyimpan.', false));
         const overwrite = form.get('overwrite') === '1';
@@ -826,7 +821,7 @@ const server = http.createServer(async (req, res) => {
             failures.push(`${p.nama_file}: ${err.message}`);
           }
         }
-        UPLOADS.delete(token);
+        await deleteStaged(token);
         const text = failures.length
           ? `${saved} berkas tersimpan, ${failures.length} gagal — ${failures.join('; ')}`
           : `${saved} berkas berhasil disimpan ke database.`;
@@ -872,13 +867,13 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname.startsWith('/pariwisata/admin/')) {
       if (session.role !== 'admin') return sendHtml(res, errorPage('Akses admin diperlukan.'), 403);
-      pruneUploads();
+      await pruneUploads();
 
       if (req.method === 'POST' && url.pathname === '/pariwisata/admin/upload') {
         const { files } = await parseMultipart(req);
         if (!files.length) return redirect(res, flash('/pariwisata?tab=admin&sub=upload', 'Tidak ada berkas yang diunggah.', false));
         const token = stageKey();
-        UPLOADS.set(token, {
+        await putStaged(token, {
           at: Date.now(),
           files: files.map((f) => {
             let tahun = null; let bulan = null;
@@ -901,7 +896,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST' && url.pathname === '/pariwisata/admin/preview') {
         const form = new URLSearchParams(await readBody(req));
         const token = form.get('stage');
-        const record = UPLOADS.get(token);
+        const record = await getStaged(token);
         if (!record) return redirect(res, flash('/pariwisata?tab=admin&sub=upload', 'Sesi unggahan kedaluwarsa. Unggah ulang berkas.', false));
         const preview = [];
         for (const [i, file] of record.files.entries()) {
@@ -921,13 +916,14 @@ const server = http.createServer(async (req, res) => {
           }
         }
         record.preview = preview;
+        await putStaged(token, record);
         return redirect(res, `/pariwisata?tab=admin&sub=upload&stage=${token}&preview=1`);
       }
 
       if (req.method === 'POST' && url.pathname === '/pariwisata/admin/save') {
         const form = new URLSearchParams(await readBody(req));
         const token = form.get('stage');
-        const record = UPLOADS.get(token);
+        const record = await getStaged(token);
         if (!record || !record.preview) return redirect(res, flash('/pariwisata?tab=admin&sub=upload', 'Sesi unggahan kedaluwarsa. Unggah ulang berkas.', false));
         if (form.get('confirm') !== '1') return redirect(res, flash(`/pariwisata?tab=admin&sub=upload&stage=${token}&preview=1`, 'Centang konfirmasi sebelum menyimpan.', false));
         let saved = 0; let rowCount = 0; const failures = [];
@@ -940,7 +936,7 @@ const server = http.createServer(async (req, res) => {
             failures.push(`${p.nama_file}: ${err.message}`);
           }
         }
-        UPLOADS.delete(token);
+        await deleteStaged(token);
         const text = failures.length
           ? `${saved} berkas tersimpan (${rowCount} baris), ${failures.length} gagal - ${failures.join('; ')}`
           : `${saved} berkas berhasil disimpan (${rowCount} baris) ke database.`;
@@ -1160,21 +1156,35 @@ const server = http.createServer(async (req, res) => {
     console.error(`[server] ${req.method} ${url.pathname}: ${err.message}`);
     return sendHtml(res, errorPage(err.message), 500);
   }
-});
+};
 
-server.listen(PORT, () => {
-  console.log(`Dashboard Node berjalan di http://localhost:${PORT}`);
-});
+const server = http.createServer(requestHandler);
 
-// Report whether the Python bridge can run, so a broken export path is visible
-// at startup instead of only when someone clicks a download button.
-checkExporter().then((status) => {
-  setExportAvailability(status.ok);
-  if (status.ok) console.log(`[export] Python bridge siap (${status.python}).`);
-  else console.warn(`[export] Ekspor dokumen NONAKTIF: ${status.message}`);
-});
+// On Vercel this module is imported as a serverless function: never bind a port.
+const ON_VERCEL = Boolean(process.env.VERCEL);
 
-process.on('SIGINT', async () => {
-  await pool.end();
-  server.close(() => process.exit(0));
-});
+if (!ON_VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`Dashboard Node berjalan di http://localhost:${PORT}`);
+  });
+
+  // Surface a broken export path at startup instead of on first click.
+  checkExporter().then((status) => {
+    setExportAvailability(status.ok);
+    if (status.ok) console.log(`[export] Python bridge siap (${status.python}).`);
+    else console.warn(`[export] Ekspor dokumen NONAKTIF: ${status.message}`);
+  });
+
+  process.on('SIGINT', async () => {
+    await pool.end();
+    server.close(() => process.exit(0));
+  });
+} else {
+  // Document export needs a Python bridge, which does not exist on Vercel.
+  setExportAvailability(false);
+  console.log('[export] Dijalankan di Vercel - ekspor dokumen dinonaktifkan.');
+}
+
+export default requestHandler;
+export { requestHandler, server };
+

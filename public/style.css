@@ -1,0 +1,378 @@
+/* ============================================================
+   PARIWISATA PAPUA — sidebar-nav dashboard, amber accent
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root{
+    --ink:        #0F172A;
+    --ink-dim:    #64748B;
+    --bg:         #F8FAFC;
+    --surface:    #FFFFFF;
+    --line:       #E2E8F0;
+    --primary:    #F59E0B;
+    --primary-dark:#D97706;
+    /* Warna semantik harus gelap agar teks kecil (12px/700) di badge lolos
+       WCAG AA 4.5:1. Versi terang #10B981/#EF4444 hanya 2.41:1 dan 3.44:1. */
+    --positive:   #047857;
+    --negative:   #B91C1C;
+    --positive-bg:#ECFDF5;
+    --positive-line:#A7F3D0;
+    --negative-bg:#FEF2F2;
+    --negative-line:#FECACA;
+    --surface-2:  #F1F5F9;
+    --map-bg:     #0B0F14;
+}
+
+html, body, [class*="css"]{ font-family: 'Inter', sans-serif; }
+.stApp{ background: var(--bg); color: var(--ink); }
+[data-testid="stHeader"]{ background: transparent; }
+
+h1, h2, h3{ font-weight:700; letter-spacing:-0.01em; color: var(--ink); }
+
+/* ---------- sidebar ---------- */
+[data-testid="stSidebar"]{
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+}
+.brand-block{ display:flex; align-items:center; gap:10px; margin-bottom:2px; }
+.brand-mark{
+    width:40px; height:40px; border-radius:10px;
+    background: var(--primary); color:var(--ink);
+    display:flex; align-items:center; justify-content:center; font-size:19px;
+}
+.sidebar-title{ font-size:16px; font-weight:800; color:var(--ink); margin:0; line-height:1.2; }
+.sidebar-subtitle{ font-size:12px; color:var(--ink-dim); margin:0; }
+
+/* Main menu: two big section buttons — primary (active) vs secondary (inactive) */
+[data-testid="stSidebar"] .stButton>button{
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
+    text-align: left !important;
+    padding: 13px 16px !important;
+    width: 100%;
+    box-shadow: none !important;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+/* Fokus keyboard: outline bawaan sebelumnya dimatikan (WCAG 2.4.7 fail),
+   jadi diganti cincin fokus kontras tinggi di atas permukaan terang. */
+.stButton>button:focus-visible,
+[data-testid="stSidebar"] .stButton>button:focus-visible{
+    outline: 3px solid var(--ink) !important;
+    outline-offset: 2px !important;
+    box-shadow: none !important;
+}
+
+/* Active section */
+[data-testid="stSidebar"] .stButton>button[kind="primary"]{
+    background: var(--primary) !important;
+    color: var(--ink) !important;
+    border: none !important;
+}
+[data-testid="stSidebar"] .stButton>button[kind="primary"]:hover{ background: var(--primary-dark) !important; }
+
+/* Inactive section */
+[data-testid="stSidebar"] .stButton>button[kind="secondary"]{
+    background: var(--surface) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--line) !important;
+}
+[data-testid="stSidebar"] .stButton>button[kind="secondary"]:hover{
+    background: var(--bg) !important;
+    border-color: var(--primary) !important;
+    color: var(--primary-dark) !important;
+}
+
+.nav-subtitle{
+    font-size: 11.5px; color: var(--ink-dim);
+    margin: 5px 2px 14px 4px; line-height:1.3;
+}
+
+.user-card{
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 13px;
+    color: var(--ink);
+}
+.user-card b{ color: var(--ink); }
+.status-dot{
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    background: var(--positive); margin-right:6px;
+}
+.status-dot-off{ background: #94A3B8; }
+
+/* ---------- generic cards ---------- */
+.dashboard-card{
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+    margin-bottom: 20px;
+}
+.card-header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--line);
+}
+.card-header h3{ margin:0; font-size:16px; font-weight:700; }
+.card-header span{ font-size:12px; color:var(--ink-dim); }
+
+/* ---------- search + filter bar ---------- */
+.search-bar .stTextInput input{
+    border-radius: 999px !important;
+    padding: 12px 20px !important;
+    border: 1px solid var(--line) !important;
+    background: var(--surface) !important;
+}
+/* Catatan: aturan "filter pill" gelap ([data-baseweb="select"]) dan styling
+   selectbox kloning dihapus — atribut data-baseweb tidak lagi ditulis
+   Streamlit >=1.5x, jadi aturan itu tidak pernah tampil dan hanya menyesatkan.
+   Selectbox sekarang memakai tampilan bawaan Streamlit yang sudah netral. */
+
+/* ---------- page title ---------- */
+.hero-title{ font-size:26px; font-weight:800; color:var(--ink); margin:18px 0 16px 0; }
+
+/* ---------- section header (top of main content, one per Pariwisata/Transportasi) ---------- */
+.section-header{
+    display:flex; align-items:center; gap:14px;
+    margin: 4px 0 22px 0; padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+}
+.section-icon{
+    width:46px; height:46px; min-width:46px; border-radius:12px;
+    background: var(--primary); color:var(--ink);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+}
+.section-title{ font-size:24px; font-weight:800; color:var(--ink); line-height:1.2; margin:0; }
+.section-subtitle{ font-size:13px; color:var(--ink-dim); margin-top:2px; }
+
+/* ---------- tabs — the in-page navigation for each section ----------
+   Penting: Streamlit >=1.5x tidak lagi menulis atribut data-baseweb, jadi
+   selector [data-baseweb="tab"] mati. DOM sekarang pakai role="tab" +
+   aria-selected di dalam [data-testid="stTabs"]. File ini sebelumnya punya
+   DUA blok tab yang saling menimpa; sekarang satu blok saja. */
+[data-testid="stTabs"] [role="tablist"]{
+    gap: 8px;
+    background-color: var(--surface-2);
+    padding: 6px;
+    border-radius: 10px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 22px;
+}
+[data-testid="stTabs"] [role="tab"]{
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14.5px;
+    background: transparent;
+}
+/* Warna teks dipaksa: Streamlit menyuntik warna sendiri lewat emotion, dan
+   ikut warna tema browser (terang/gelap) sehingga teks bisa sama dengan
+   background. !important needed to win over the injected style. */
+[data-testid="stTabs"] [role="tab"],
+[data-testid="stTabs"] [role="tab"] *{
+    color: var(--ink) !important;
+}
+[data-testid="stTabs"] [role="tab"]:hover{
+    background: var(--surface-2);
+}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"]{
+    background: var(--primary) !important;
+    color: var(--ink) !important;
+    font-weight: 700;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+[data-testid="stTabs"] [role="tabpanel"]{ padding-top: 6px; }
+
+/* ---------- province stat cards (matches original spec) ---------- */
+.province-card{
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+}
+.province-header{
+    background: var(--primary);
+    color: var(--ink);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    padding: 12px 16px;
+    text-align: center;
+    text-transform: uppercase;
+}
+.stat-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+}
+.stat-row:last-child{ border-bottom:none; }
+.stat-label{ font-size:12px; color:var(--ink-dim); display:block; margin-bottom:4px; }
+.stat-value{ font-size:19px; font-weight:700; color:var(--ink); }
+.stat-delta-na{ font-size:12px; color:var(--ink-dim); }
+
+.badge-up{
+    background-color: var(--positive-bg); color: var(--positive);
+    border: 1px solid var(--positive-line);
+    padding: 3px 9px; border-radius: 999px; font-weight:700; font-size:12px;
+}
+.badge-down{
+    background-color: var(--negative-bg); color: var(--negative);
+    border: 1px solid var(--negative-line);
+    padding: 3px 9px; border-radius: 999px; font-weight:700; font-size:12px;
+}
+
+/* ---------- dark map panel ---------- */
+.map-panel{
+    background: var(--map-bg);
+    border-radius: 18px;
+    padding: 16px 16px 4px 16px;
+    margin-bottom: 16px;
+}
+.map-panel-title{
+    color: #fff; font-weight:700; font-size:15px; padding: 4px 6px 8px 6px;
+}
+
+/* ---------- login ---------- */
+.login-wrap{ margin-top: 8vh; }
+.login-card{
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 34px 32px 26px 32px;
+    box-shadow: 0 4px 16px rgba(16,24,40,0.06);
+}
+
+/* Ubah form login bawaan Streamlit agar otomatis menjadi card container */
+[data-testid="stForm"] {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 4px 16px rgba(16,24,40,0.06);
+}
+
+/* ---------- misc widget overrides ---------- */
+/* ---------- primary button — SATU-SATUNYA definisi untuk area main ----------
+   Versi lama punya tiga blok berbeda (sidebar amber, ini, dan gradient biru
+   #2563EB) sehingga satu halaman menampilkan tombol biru dan amber sekaligus.
+   Sekarang semua primary button = amber + teks ink (8.31:1). */
+.stButton>button[kind="primary"]{
+    background: var(--primary) !important;
+    color: var(--ink) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight:700 !important;
+    padding: 0.6rem 1.2rem !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.stButton>button[kind="primary"]:hover{ background: var(--primary-dark) !important; }
+[data-testid="stMetricValue"]{ color: var(--primary-dark); }
+hr{ border-color: var(--line) !important; }
+
+.app-footer{ text-align:center; color: var(--ink-dim); font-size:12px; padding: 16px 0 6px 0; }
+
+/* ============================================================
+   UI/UX FIXES & IMPROVEMENTS (Added enhancements)
+   ============================================================ */
+
+/* 1. Improved File Uploader Dropzone Styling */
+[data-testid="stFileUploader"] section {
+    border: 2px dashed var(--primary) !important;
+    background-color: var(--bg) !important;
+    border-radius: 12px !important;
+    padding: 24px !important;
+    transition: all 0.2s ease-in-out;
+}
+[data-testid="stFileUploader"] section:hover {
+    background-color: var(--surface) !important;
+    border-color: var(--primary-dark) !important;
+}
+
+/* 2. Fix Metrics & Floating Numbers Readability */
+[data-testid="stMetric"] {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+}
+[data-testid="stMetricLabel"] {
+    font-size: 13px !important;
+    color: var(--ink-dim) !important;
+    font-weight: 600 !important;
+}
+
+/* 3. Refined Selectbox & Dropdown Controls — lihat catatan di blok search bar:
+   selector data-baseweb sudah mati, jadi tidak ada duplikat di sini. */
+
+/* 4. Enhanced Tab Navigation Readability */
+[data-testid="stTabs"] [role="tab"] {
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+/* Global background & font styling */
+    .stApp {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Modern Card Containers */
+    div.stContainer, div[data-testid="stExpander"], div.element-container {
+        background-color: #ffffff;
+        border-radius: 12px;
+    }
+    
+    /* Blok primary/secondary/uploader/metric versi biru (#2563eb) yang tadinya
+       ada di sini sudah dihapus: duplikat definisi token di atas, dan itulah
+       sumber "tombol biru vs amber" yang Anda lihat. */
+    
+    /* Tabs Styling — dihapus, duplikat dari blok tab utama di atas. */
+
+/* ============================================================
+   LAYOUT POLISH — readable, centered content on wide screens
+   ============================================================ */
+
+/* layout="wide" runs content edge-to-edge; on large monitors that stretches
+   text lines, cards and tables past a comfortable reading width. Cap and
+   centre the main column; tighten the gutters when the viewport is small. */
+[data-testid="stMainBlockContainer"],
+[data-testid="stMain"] .block-container{
+    max-width: 1500px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-top: 2rem;
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+    padding-bottom: 3rem;
+}
+@media (max-width: 900px){
+    [data-testid="stMainBlockContainer"],
+    [data-testid="stMain"] .block-container{
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
+/* Even vertical rhythm between stacked top-level blocks (cards, charts, tabs) */
+[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"]{
+    gap: 1rem;
+}
+
+/* Charts and tables stay inside their card instead of overflowing on small screens */
+[data-testid="stMain"] .js-plotly-plot,
+[data-testid="stMain"] [data-testid="stDataFrame"]{
+    max-width: 100%;
+}
+
+/* ---------- orange frame around the trend charts (whole chart image) ---------- */
+[class*="st-key-chartframe_yoy"],
+[class*="st-key-chartframe_series"]{
+    border: 1.5px solid #ED7D31;
+    border-radius: 12px;
+    padding: 10px;
+}
+

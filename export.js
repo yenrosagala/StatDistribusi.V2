@@ -15,6 +15,12 @@ const SERVICE_URL = (process.env.EXPORT_SERVICE_URL || 'http://127.0.0.1:8765').
 const SERVICE_TIMEOUT_MS = Number(process.env.EXPORT_TIMEOUT_MS || 300_000);
 const HEALTH_TIMEOUT_MS = 1500;
 
+// Vercel has no Python runtime and no long-lived process, so document export
+// cannot work there. Skip every spawn attempt and report it cleanly.
+const EXPORTS_DISABLED = process.env.VERCEL === '1' || process.env.DISABLE_EXPORTS === '1';
+const DISABLED_MESSAGE = 'Ekspor dokumen tidak tersedia pada deployment Vercel (butuh Python bridge). '
+  + 'Jalankan aplikasi secara lokal atau gunakan sidecar export_service.py.';
+
 export const EXPORT_MIME = {
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -133,6 +139,7 @@ async function runViaBridge(kind, payload) {
 
 // -------------------------------------------------------------------- public
 export async function runExport(kind, payload) {
+  if (EXPORTS_DISABLED) { const err = new Error(DISABLED_MESSAGE); err.code = 'EXPORT_DISABLED'; throw err; }
   if (await serviceHealth()) return runViaService(kind, payload);
   return runViaBridge(kind, payload);
 }
@@ -141,6 +148,7 @@ export async function runExport(kind, payload) {
 // the sidecar later is picked up without a server restart.
 let cached = null;
 export async function checkExporter() {
+  if (EXPORTS_DISABLED) return { ok: false, mode: 'disabled', message: DISABLED_MESSAGE };
   const fresh = cached && (cached.ok || Date.now() - cached.checkedAt < 15_000);
   if (fresh) return cached;
 

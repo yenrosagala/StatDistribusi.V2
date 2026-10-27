@@ -1,0 +1,8 @@
+backup/
+vendor/
+node_modules/
+exports/
+*.log
+*.bak
+.env
+__pycache__/

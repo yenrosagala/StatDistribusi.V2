@@ -30,7 +30,7 @@ export async function buildPariwisataAdmin(session, url, { uploads, readFlash })
 
   // ---- upload -------------------------------------------------------------
   const stage = url.searchParams.get('stage');
-  const record = stage ? uploads.get(stage) : null;
+  const record = stage ? await uploads.get(stage) : null;
   admin.upload = {
     stage: record ? stage : null,
     files: record
