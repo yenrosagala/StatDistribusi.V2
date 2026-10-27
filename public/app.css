@@ -337,3 +337,22 @@ textarea:focus-visible, summary:focus-visible, .landing-card:focus-visible {
   display: inline-block; width: 10px; height: 10px; border-radius: 2px;
   margin-right: 6px; vertical-align: baseline;
 }
+
+/* ---------------------------------------------------------------------------
+   Contrast fix: dark ink on the blue primary.
+   style.css pairs `background: var(--primary)` with `color: var(--ink)`,
+   which was readable while --primary was amber (#F59E0B). Now that --primary
+   is blue (#1E40AF) that pairing is ~1.0:1 - effectively invisible.
+   White on #1E40AF is 8.7:1.
+   --------------------------------------------------------------------------- */
+.province-header,
+.brand-mark,
+.section-icon {
+  color: #FFFFFF;
+}
+
+/* Belt-and-braces: anything else that paints the primary colour as a surface. */
+.province-header a,
+.province-header span {
+  color: inherit;
+}
