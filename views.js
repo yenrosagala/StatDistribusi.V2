@@ -368,7 +368,7 @@ function transportNarrativeBox(item, isAdmin) {
     + `<p class="muted">Executive Summary — ${escapeHtml(item.narrative.source)}</p>${paras}${regen}</div>`;
 }
 
-function transportReportTab(report, isAdmin) {
+function transportReportTab(report, isAdmin, user = { role: 'user' }) {
   const control = `<form method="get" action="/transportasi" class="toolbar">
   <input type="hidden" name="tab" value="report">
   <label class="field-inline"><span>Provinsi</span><select name="provinsi" onchange="this.form.submit()">
@@ -394,7 +394,8 @@ function transportReportTab(report, isAdmin) {
 </section>`).join('');
     return `<h3 class="section-title">${icon(group.icon)} Moda: ${escapeHtml(group.moda)}</h3>${cards}`;
   }).join('');
-  const exportCard = `<section class="dashboard-card">
+  const canExport = user.role === 'admin' || user.role === 'user';
+  const exportCard = canExport ? `<section class="dashboard-card">
   <h2>📥 Unduh Laporan</h2>
   <form method="post" action="/export/transportasi/idml" enctype="multipart/form-data" class="admin-form">
     <input type="hidden" name="provinsi" value="${escapeHtml(report.province)}">
@@ -411,7 +412,7 @@ function transportReportTab(report, isAdmin) {
       <button class="btn btn-primary" type="submit">🎨 Unduh Paket InDesign (.zip)</button>
     </div>
   </form>
-</section>`;
+</section>` : '';
   return head + groups + exportCard;
 }
 
@@ -620,8 +621,9 @@ export function transportAdminTab(admin) {
 
 export function transportasiPage({ user, periods, selected, sections, tab = 'dashboard', report = null, admin = null }) {
   const periodQuery = selected ? `?periode=${selected.thn}-${selected.bln}` : '';
+  const canReport = user.role !== 'rekon';
   const tabs = [
-    { label: 'Dashboard', href: `/transportasi${periodQuery}`, active: tab === 'dashboard' },
+    ...(canReport ? [{ label: 'Dashboard', href: `/transportasi${periodQuery}`, active: tab === 'dashboard' }] : []),
     { label: 'Laporan', href: `/transportasi?tab=report${selected ? `&periode=${selected.thn}-${selected.bln}` : ''}`, active: tab === 'report' },
   ];
 
@@ -636,7 +638,7 @@ export function transportasiPage({ user, periods, selected, sections, tab = 'das
   let scripts = '';
   if (tab === 'report') {
     content = report
-      ? transportReportTab(report, user.role === 'admin')
+      ? transportReportTab(report, user.role === 'admin', user)
       : '<section class="dashboard-card"><div class="alert alert-warn">Pilih periode laporan terlebih dahulu.</div></section>';
   } else if (tab === 'admin') {
     const adminView = transportAdminTab(admin || {});
@@ -669,9 +671,12 @@ export function pariwisataPage({ user, info, periods, tab = 'home', map = null, 
     ? '&mdash;'
     : `${formatIdNumber(v, 1)}${unit}`);
 
+  const canBrowse = user.role !== 'rekon';
   const tabs = [
-    { label: 'Dashboard', href: '/pariwisata', active: tab === 'home' },
-    { label: 'Peta', href: '/pariwisata?tab=map', active: tab === 'map' },
+    ...(canBrowse ? [
+      { label: 'Dashboard', href: '/pariwisata', active: tab === 'home' },
+      { label: 'Peta', href: '/pariwisata?tab=map', active: tab === 'map' },
+    ] : []),
     { label: 'Laporan', href: '/pariwisata?tab=report', active: tab === 'report' },
   ];
 
@@ -691,8 +696,8 @@ export function pariwisataPage({ user, info, periods, tab = 'home', map = null, 
   if (tab === 'map') {
     body += mapTab(map);
     scripts.push(mapScript());
-  } else if (tab === 'report' && report) {
-    const parts = reportTab(report, user.role === 'admin');
+  } else if (tab === 'report') {
+    const parts = reportTab(report, user.role === 'admin', user);
     body += parts.html;
     if (parts.configs.length) scripts.push(reportScript(parts.configs));
   } else if (tab === 'admin') {
@@ -1221,7 +1226,7 @@ function valueGrid(series, colors = {}) {
 </table></div>`;
 }
 
-function reportTab(report, isAdmin) {
+function reportTab(report, isAdmin, user = { role: 'user' }) {
   const control = `<form method="get" action="/pariwisata" class="toolbar">
   <input type="hidden" name="tab" value="report">
   <label class="field-inline"><span>Provinsi</span><select name="provinsi" onchange="this.form.submit()">
@@ -1298,7 +1303,8 @@ function reportTab(report, isAdmin) {
 </section>`;
   }).join('')).join('');
 
-  return { html: `${head}${cards}${pariwisataExportCard(report)}`, configs };
+  const canExport = user.role === 'admin' || user.role === 'user';
+  return { html: `${head}${cards}${canExport ? pariwisataExportCard(report) : ''}`, configs };
 }
 
 function pariwisataExportCard(report) {

@@ -48,7 +48,23 @@ const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
 const USERS = {
   admin: { password: process.env.LOGIN_ADMIN_PASSWORD || 'admin123', role: 'admin', name: 'Database Administrator' },
   user: { password: process.env.LOGIN_USER_PASSWORD || 'user123', role: 'user', name: 'General Analyst' },
+  // Report-only analyst: tables, charts and the justification dialog. No
+  // admin tab, no exports (enforced server-side, not just hidden in the UI).
+  rekon: { password: process.env.LOGIN_REKON_PASSWORD || 'rekon123', role: 'rekon', name: 'Analis Rekon' },
 };
+
+// Single source of truth for which tabs a role may open.
+const ROLE_TABS = {
+  admin: ['dashboard', 'report', 'admin'],
+  user: ['dashboard', 'report'],
+  rekon: ['report'],
+};
+const ROLE_TABS_PARIWISATA = {
+  admin: ['home', 'map', 'report', 'admin'],
+  user: ['home', 'map', 'report'],
+  rekon: ['report'],
+};
+const tabsFor = (map, role) => map[role] || map.user;
 
 const MODA = [
   {
@@ -165,6 +181,12 @@ function json(res, body, status = 200) {
     'Cache-Control': 'no-store',
   });
   res.end(JSON.stringify(body));
+}
+
+/** Roles that may download generated documents. */
+const EXPORT_ROLES = new Set(['admin', 'user']);
+function denyExport(session) {
+  return !EXPORT_ROLES.has(session.role);
 }
 
 function redirect(res, location, headers = {}) {
@@ -374,11 +396,9 @@ async function loadTransportReport(url, periods, selected) {
 
 async function buildTransportasi(session, url) {
   const periods = sortPeriods(await availablePeriods());
-  const allowed = session.role === 'admin'
-    ? ['dashboard', 'report', 'admin']
-    : ['dashboard', 'report'];
+  const allowed = tabsFor(ROLE_TABS, session.role);
   const requested = url.searchParams.get('tab');
-  const tab = allowed.includes(requested) ? requested : 'dashboard';
+  const tab = allowed.includes(requested) ? requested : allowed[0];
   if (periods.length === 0) {
     return transportasiPage({ user: session, periods: [], sections: [], tab });
   }
@@ -562,11 +582,9 @@ async function buildPariwisata(session, url) {  const rows = await pariwisataInf
   const latest = periods.at(-1);
   const metrics = latest ? await latestMetrics(latest.thn, latest.bln) : null;
   const provCount = new Set(rows.map((r) => String(r.kd_prov))).size;
-  const allowed = session.role === 'admin'
-    ? ['home', 'map', 'report', 'admin']
-    : ['home', 'map', 'report'];
+  const allowed = tabsFor(ROLE_TABS_PARIWISATA, session.role);
   const requested = url.searchParams.get('tab');
-  const tab = allowed.includes(requested) ? requested : 'home';
+  const tab = allowed.includes(requested) ? requested : allowed[0];
   const map = tab === 'map' && rows.length ? await loadMap(url, rows) : null;
   const report = tab === 'report' && rows.length ? await loadReport(url, rows) : null;
   const admin = tab === 'admin' && session.role === 'admin'
@@ -733,7 +751,8 @@ const requestHandler = async (req, res) => {
         role: account.role,
         exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS,
       });
-      return redirect(res, '/', {
+      const landing = account.role === 'rekon' ? '/pariwisata?tab=report' : '/';
+      return redirect(res, landing, {
         'Set-Cookie': `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_SECONDS}`,
       });
     }
@@ -754,7 +773,10 @@ const requestHandler = async (req, res) => {
       } catch { /* probe failure must never break rendering */ }
     }
 
-    if (url.pathname === '/') return sendHtml(res, await buildLanding(session));
+    if (url.pathname === '/') {
+      if (session.role === 'rekon') return redirect(res, '/pariwisata?tab=report');
+      return sendHtml(res, await buildLanding(session));
+    }
     if (url.pathname === '/pariwisata') return sendHtml(res, await buildPariwisata(session, url));
     if (url.pathname === '/transportasi') return sendHtml(res, await buildTransportasi(session, url));
 
@@ -1109,6 +1131,7 @@ const requestHandler = async (req, res) => {
     }
 
     if (url.pathname === '/export/summary.pdf' && req.method === 'GET') {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
       if (session.role !== 'admin') return sendHtml(res, errorPage('Akses admin diperlukan.'), 403);
       const p = summaryParams();
       if (!['pariwisata', 'transportasi'].includes(p.module) || !Number.isInteger(p.year) || !Number.isInteger(p.month)) {
@@ -1190,6 +1213,7 @@ const requestHandler = async (req, res) => {
     }
 
     if (url.pathname === '/export/transportasi/pptx') {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
       const periods = sortPeriods(await availablePeriods());
       const selected = pickPeriod(periods, url.searchParams.get('periode'));
       const prev = prevPeriod(selected.thn, selected.bln);
@@ -1210,6 +1234,9 @@ const requestHandler = async (req, res) => {
       return sendFile(res, data, EXPORT_MIME.pptx, exportFileName('pptx', { bln: selected.bln, thn: selected.thn }));
     }
 
+    if (req.url.startsWith('/export/transportasi/') && denyExport(session)) {
+      return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
+    }
     const reportExport = url.pathname.startsWith('/export/transportasi/')
       ? url.pathname.slice('/export/transportasi/'.length)
       : null;
@@ -1247,6 +1274,7 @@ const requestHandler = async (req, res) => {
     }
 
     if (url.pathname === '/export/pariwisata/xlsx') {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
       const values = Object.fromEntries(url.searchParams);
       const prov = values.provinsi || 'Papua Selatan';
       const tahun = Number(values.tahun);
@@ -1260,6 +1288,7 @@ const requestHandler = async (req, res) => {
     }
 
     if (url.pathname === '/export/pariwisata/idml') {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
       const form = req.method === 'POST' ? await parseMultipart(req) : { files: [], fields: {} };
       const values = { ...Object.fromEntries(url.searchParams), ...form.fields };
       const prov = values.provinsi || 'Papua Selatan';
@@ -1285,6 +1314,7 @@ const requestHandler = async (req, res) => {
     }
 
     if (url.pathname === '/export/pariwisata-map.csv') {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
       const info = await pariwisataInfo();
       const map = await loadMap(url, info);
       const lines = ['province,jenis_akomodasi,month,year,val', ...map.rows.map(
