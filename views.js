@@ -1,6 +1,7 @@
 import { INV_MONTH_MAP, MONTH_NAMES, escapeHtml, formatIdNumber, monthNameEn, periodLabel } from './lib.js';
 import { icon } from './icons.js';
 import { summaryPanel } from './summary-panel.js';
+import { adminTabs } from './admin-tabs.js';
 
 import { italicizeEnglish } from './lib-transport.js';
 import { pariwisataAdminView } from './pariwisata-admin-view.js';
@@ -160,7 +161,7 @@ ${body}
   </main>
 </div>
 ${scripts}
-${growthScript()}${summaryScript()}
+${growthScript()}${summaryScript()}${adminTabsScript()}
 </body>
 </html>`;
 }
@@ -602,11 +603,7 @@ export function transportAdminTab(admin) {
     { key: 'summary', icon: icon('edit'), label: 'Ringkasan Justifikasi (AI)', html: summaryPanel('transportasi') },
   ];
 
-  const folds = sections.map((s) => `
-  <details class="admin-fold" id="fold-${s.key}"${s.key === focus ? ' open' : ''}>
-    <summary><span class="fold-icon">${s.icon}</span>${escapeHtml(s.label)}</summary>
-    <div class="admin-fold-body">${s.html}</div>
-  </details>`).join('');
+  const tabs = adminTabs(sections, focus);
 
   const series = admin.seriesForm && admin.seriesForm.series;
   const chart = series && !series.empty ? chartScript([seriesChart(series)]) : '';
@@ -615,7 +612,7 @@ export function transportAdminTab(admin) {
     body: `<div class="admin-shell">
   <div class="admin-hero"><h1>📈 Pusat Analisis &amp; Manajemen Data</h1>
     <p>Jelajahi tren data transportasi antar periode secara bebas. Gunakan panel di bawah untuk mengunggah, mengoreksi, atau menghapus data.</p></div>
-  ${folds}
+  ${tabs}
 </div>`,
     scripts: chart,
   };
@@ -1158,6 +1155,54 @@ function summaryScript() {
         .catch(function () { btn.disabled = false; setStatus(p, "Tidak dapat menghubungi server.", "err"); });
     });
     loadPeriods(p);
+  });
+})();
+</script>`;
+}
+/** Switch admin panels; mirrors the choice into ?sub= so a reload keeps it. */
+function adminTabsScript() {
+  return `<script>
+(function () {
+  var navs = document.querySelectorAll(".admin-tiles");
+  if (!navs.length) return;
+  navs.forEach(function (nav) {
+    var wrap = nav.parentElement;
+    var tiles = Array.prototype.slice.call(nav.querySelectorAll(".admin-tile"));
+    function activate(tile, push) {
+      tiles.forEach(function (t) {
+        var on = t === tile;
+        t.classList.toggle("active", on);
+        t.setAttribute("aria-selected", String(on));
+      });
+      wrap.querySelectorAll(".admin-panel").forEach(function (p) {
+        p.classList.toggle("active", p.id === tile.dataset.panel);
+      });
+      if (push) {
+        try {
+          var url = new URL(window.location.href);
+          url.searchParams.set("sub", tile.id.replace("admin-tab-", ""));
+          window.history.replaceState(null, "", url);
+        } catch (e) { /* ignore */ }
+      }
+    }
+    nav.addEventListener("click", function (ev) {
+      var tile = ev.target.closest(".admin-tile");
+      if (tile) activate(tile, true);
+    });
+    nav.addEventListener("keydown", function (ev) {
+      if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+      var i = tiles.indexOf(document.activeElement);
+      if (i === -1) {
+        // A mouse click does not always move focus (e.g. Safari), so fall back
+        // to whichever tile is currently selected.
+        i = tiles.findIndex(function (t) { return t.classList.contains("active"); });
+      }
+      if (i === -1) return;
+      ev.preventDefault();
+      var next = tiles[(i + (ev.key === "ArrowRight" ? 1 : tiles.length - 1)) % tiles.length];
+      next.focus();
+      activate(next, true);
+    });
   });
 })();
 </script>`;

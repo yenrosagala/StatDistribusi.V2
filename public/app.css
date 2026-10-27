@@ -457,3 +457,40 @@ textarea:focus-visible, summary:focus-visible, .landing-card:focus-visible {
 .growth-cell.pos { color: var(--positive); }
 .growth-cell.neg { color: var(--negative); }
 .growth-cell.pos:hover, .growth-cell.neg:hover { color: var(--primary); }
+
+/* ---------- Admin launcher: compact function cards in one row ---------- */
+.admin-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 4px 0 16px;
+}
+.admin-tile {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--ink-dim);
+  text-align: left;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.admin-tile:hover { border-color: var(--primary); color: var(--ink); background: var(--bg); }
+.admin-tile.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #FFFFFF;
+}
+.admin-tile-icon { display: inline-flex; }
+.admin-tile-icon .icon { width: 18px; height: 18px; }
+.admin-tile-label { line-height: 1.25; }
+
+.admin-panel { display: none; }
+.admin-panel.active { display: block; }
+
+@media (max-width: 640px) {
+  .admin-tiles { grid-template-columns: 1fr 1fr; }
+  .admin-tile { padding: 10px 12px; font-size: 12px; }
+}

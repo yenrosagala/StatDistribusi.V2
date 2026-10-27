@@ -1,6 +1,7 @@
 import { MONTH_NAMES, escapeHtml, formatIdNumber } from './lib.js';
 import { icon } from './icons.js';
 import { summaryPanel } from './summary-panel.js';
+import { adminTabs } from './admin-tabs.js';
 
 const TABS = [
   { key: 'upload', label: '📥 Ingesti Data (Upload)' },
@@ -201,16 +202,12 @@ export function pariwisataAdminView(admin = {}) {
     { key: 'summary', icon: icon('edit'), label: 'Ringkasan Justifikasi (AI)', html: summaryPanel('pariwisata') },
   ];
 
-  const folds = sections.map((s) => `
-  <details class="admin-fold" id="fold-${s.key}"${s.key === focus ? ' open' : ''}>
-    <summary><span class="fold-icon">${s.icon}</span>${escapeHtml(s.label)}</summary>
-    <div class="admin-fold-body">${s.html}</div>
-  </details>`).join('');
+  const tabs = adminTabs(sections, focus);
 
   const body = `<div class="admin-shell">
   <div class="admin-hero"><h1>🛠️ Admin ETL Pariwisata</h1>
     <p>Ingesti matriks Excel sumber, koreksi baris, bersihkan data, dan telusuri tren indikator pariwisata.</p></div>
-  ${folds}
+  ${tabs}
 </div>`;
 
   return { body, charts };
