@@ -61,3 +61,26 @@ node _dumpjson.mjs      # JSON copy
 > `6543` (transaction mode). `pg_dump` worked through it, but if you ever see
 > `prepared statement ... already exists`, retry on port `5432` (session mode)
 > or the direct database host.
+
+## What is committed vs local
+
+| Path | In git? | Why |
+|---|---|---|
+| `schema_<date>.sql` | **yes** | lets a fresh clone bootstrap an empty database |
+| `README.md` | **yes** | this file |
+| `distribusi_<stamp>.sql` | no | full dump, real production data |
+| `json_<stamp>/` | no | per-table JSON, real production data |
+
+Regenerate the schema (includes `growth_notes`, `growth_summaries` and
+`upload_staging`):
+
+```powershell
+cd node-app
+pg_dump "$env:DATABASE_URL" --schema=public --schema-only --no-owner --no-privileges --clean --if-exists -f "backup/schema_$(Get-Date -Format yyyyMMdd).sql"
+```
+
+Bootstrapping a new database from it:
+
+```powershell
+psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backup/schema_<date>.sql
+```
