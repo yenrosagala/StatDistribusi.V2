@@ -1,0 +1,161 @@
+import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(HERE, '..');
+const BRIDGE = path.join(HERE, 'export_bridge.py');
+const PYTHON = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+
+// Optional sidecar (export_service.py). Preferred over spawning because some
+// sandboxes block child-process creation outright (`spawn EPERM`).
+const SERVICE_URL = (process.env.EXPORT_SERVICE_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '');
+const SERVICE_TIMEOUT_MS = Number(process.env.EXPORT_TIMEOUT_MS || 300_000);
+const HEALTH_TIMEOUT_MS = 1500;
+
+export const EXPORT_MIME = {
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'idml-transport': 'application/zip',
+  'idml-pariwisata': 'application/zip',
+};
+
+export function exportFileName(kind, payload) {
+  const period = `${payload.bln}_${payload.thn}`;
+  if (kind === 'pptx') return `dashboard_transportasi_${period}.pptx`;
+  const prov = String(payload.prov || 'Papua').replace(/\s+/g, '_');
+  if (kind === 'xlsx-transport') return `Tabel_Transportasi_${prov}_${period}.xlsx`;
+  if (kind === 'xlsx-pariwisata') return `Tabel_Pariwisata_${prov}_${period}.xlsx`;
+  if (kind === 'docx') return `Master_Laporan_Transportasi_${prov}_${period}.docx`;
+  if (kind === 'idml-transport') return `BRS_Transportasi_${prov}_${period}.zip`;
+  return `BRS_Pariwisata_${prov}_${period}.zip`;
+}
+
+function explain(code) {
+  switch (code) {
+    case 'EPERM':
+      return 'Proses anak (child process) tidak diizinkan dijalankan pada lingkungan ini. '
+        + `Jalankan sidecar \`python export_service.py\` lalu set EXPORT_SERVICE_URL=${SERVICE_URL}, `
+        + 'atau jalankan `node server.js` dari terminal biasa.';
+    case 'ENOENT':
+      return `Python tidak ditemukan ("${PYTHON}"). Pasang Python, atau set PYTHON_BIN ke path python.exe.`;
+    case 'EACCES':
+      return `Tidak punya izin mengeksekusi "${PYTHON}".`;
+    default:
+      return 'Terjadi kesalahan saat menjalankan Python.';
+  }
+}
+
+function bridgeError(err, args) {
+  const code = err.code || 'UNKNOWN';
+  const e = new Error(
+    `Ekspor dokumen tidak dapat dijalankan: Python bridge gagal dimulai (${code}). `
+    + `${explain(code)} Perintah: ${PYTHON} ${args.join(' ')}`,
+  );
+  e.code = code;
+  return e;
+}
+
+// ---------------------------------------------------------------- sidecar path
+async function serviceHealth(timeoutMs = HEALTH_TIMEOUT_MS) {
+  try {
+    const res = await fetch(`${SERVICE_URL}/health`, { signal: AbortSignal.timeout(timeoutMs) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function runViaService(kind, payload) {
+  let res;
+  try {
+    res = await fetch(`${SERVICE_URL}/export`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind, payload }),
+      signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const e = new Error(`Ekspor gagal: tidak dapat menghubungi export service di ${SERVICE_URL} (${err.code || err.message}).`);
+    e.code = err.code || 'ESERVICE';
+    throw e;
+  }
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body && body.error) detail = body.error;
+    } catch { /* non-JSON error body */ }
+    throw new Error(`Ekspor gagal (${kind}): ${detail}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+// ----------------------------------------------------------------- bridge path
+function runBridge(args) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(PYTHON, args, {
+        cwd: ROOT,
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+        windowsHide: true,
+      });
+    } catch (err) {
+      return reject(bridgeError(err, args));
+    }
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+    child.on('error', (err) => reject(bridgeError(err, args)));
+    child.on('close', (code) => {
+      if (code === 0) return resolve(stderr);
+      reject(new Error(stderr.trim().split(/\r?\n/).filter(Boolean).at(-1) || `ekspor gagal (kode ${code})`));
+    });
+  });
+}
+
+async function runViaBridge(kind, payload) {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'dist-export-'));
+  const payloadPath = path.join(dir, 'payload.json');
+  const outPath = path.join(dir, 'out.bin');
+  try {
+    await writeFile(payloadPath, JSON.stringify(payload), 'utf8');
+    const out = await runBridge([BRIDGE, kind, payloadPath, outPath]);
+    if (out.trim()) console.log(`[export] ${out.trim()}`);
+    return await readFile(outPath);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// -------------------------------------------------------------------- public
+export async function runExport(kind, payload) {
+  if (await serviceHealth()) return runViaService(kind, payload);
+  return runViaBridge(kind, payload);
+}
+
+// Cached capability probe. Re-probes every 15s while unavailable so starting
+// the sidecar later is picked up without a server restart.
+let cached = null;
+export async function checkExporter() {
+  const fresh = cached && (cached.ok || Date.now() - cached.checkedAt < 15_000);
+  if (fresh) return cached;
+
+  if (await serviceHealth()) {
+    cached = { ok: true, mode: 'service', service: SERVICE_URL, checkedAt: Date.now() };
+    return cached;
+  }
+  try {
+    await runBridge(['--version']);
+    cached = { ok: true, mode: 'bridge', python: PYTHON, checkedAt: Date.now() };
+  } catch (err) {
+    cached = {
+      ok: false, mode: 'none', service: SERVICE_URL, python: PYTHON, bridge: BRIDGE,
+      code: err.code || 'UNKNOWN', message: err.message, checkedAt: Date.now(),
+    };
+  }
+  return cached;
+}
