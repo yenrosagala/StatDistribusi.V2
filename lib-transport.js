@@ -195,7 +195,7 @@ export function transportReport(rows, opts) {
     curr: fmtNum(r.curr, dec),
     cumPrev: fmtNum(r.cumPrev, dec),
     cumCurr: fmtNum(r.cumCurr, dec),
-  })).map((r) => ({ ...r, mtm: fmtPct(r.mtm), yoy: fmtPct(r.yoy) }));
+  })).map((r) => ({ ...r, mtmRaw: r.mtm, yoyRaw: r.yoy, mtm: fmtPct(r.mtm), yoy: fmtPct(r.yoy) }));
 
   return {
     label,
@@ -206,6 +206,8 @@ export function transportReport(rows, opts) {
       cumCurr: `Jan-${monthName} ${year}`,
     },
     rows: display,
+    col,
+    moda,
     total: {
       ...totalRow,
       mtm: safePct(totalRow.curr, totalRow.prev),

@@ -154,10 +154,12 @@ ${exportAvailable ? '' : `<div class="alert alert-warn export-alert">
   Jalankan ulang <code>node server.js</code> dari terminal Anda agar tombol unduh PPTX/DOCX/IDML/XLSX berfungsi.
 </div>`}
 ${body}
+    ${growthDialog()}
     <div class="app-footer">Pariwisata &amp; Transportasi Papua · BPS Provinsi Papua</div>
   </main>
 </div>
 ${scripts}
+${growthScript()}
 </body>
 </html>`;
 }
@@ -303,7 +305,7 @@ function sectionCard(section) {
 </section>`;
 }
 
-function brsTable(item) {
+function brsTable(item, ctx = {}) {
   const head = `<tr><th>${escapeHtml(item.rowLabel)}</th><th>${escapeHtml(item.columns.prev)}</th>`
     + `<th>${escapeHtml(item.columns.curr)}</th><th>M-to-M (%)</th>`
     + `<th>${escapeHtml(item.columns.cumPrev)}</th><th>${escapeHtml(item.columns.cumCurr)}</th>`
@@ -315,13 +317,32 @@ function brsTable(item) {
     const cls = v === 'undefined' ? ' class="muted"' : neg ? ' class="num-neg"' : '';
     return `<td${cls}>${v}</td>`;
   };
+  const growth = (raw, shown, comparison) => growthCellButton({
+    dataset: ctx.dataset, provinsi: ctx.provinsi, entity: item.label || '',
+    jenis: '', kelas: -1, indicator: item.col, year: ctx.year, month: ctx.month,
+    comparison, growth_value: raw,
+    label: `${item.label || ''} - ${comparison === 'mtm' ? 'M-to-M' : 'Y-on-Y'}`
+      + ` (${ctx.provinsi}, ${ctx.monthName} ${ctx.year})`,
+  }, shown);
   const body = item.rows.map((r) => {
     if (r.kind === 'other') {
       return `<tr class="brs-separator"><th colspan="7">${escapeHtml(r.label)}</th></tr>`;
     }
     const cls = r.kind === 'subtotal' ? ' class="brs-subtotal"' : '';
     return `<tr${cls}><th>${escapeHtml(r.label)}</th>${cell(r.prev, r.kind)}${cell(r.curr, r.kind)}`
-      + `${cell(r.mtm, r.kind)}${cell(r.cumPrev, r.kind)}${cell(r.cumCurr, r.kind)}${cell(r.yoy, r.kind)}</tr>`;
+      + `<td>${r.kind === 'other' ? '' : growthCellButton({
+          dataset: ctx.dataset, provinsi: ctx.provinsi, entity: r.label, jenis: '', kelas: -1,
+          indicator: item.col, year: ctx.year, month: ctx.month, comparison: 'mtm',
+          growth_value: r.mtmRaw,
+          label: `${r.label} - M-to-M (${ctx.provinsi}, ${ctx.monthName} ${ctx.year})`,
+        }, r.mtm || '')}</td>`
+      + `${cell(r.cumPrev, r.kind)}${cell(r.cumCurr, r.kind)}`
+      + `<td>${r.kind === 'other' ? '' : growthCellButton({
+          dataset: ctx.dataset, provinsi: ctx.provinsi, entity: r.label, jenis: '', kelas: -1,
+          indicator: item.col, year: ctx.year, month: ctx.month, comparison: 'yoy',
+          growth_value: r.yoyRaw,
+          label: `${r.label} - Y-on-Y (${ctx.provinsi}, ${ctx.monthName} ${ctx.year})`,
+        }, r.yoy || '')}</td>` + '</tr>';
   }).join('');
   return `<div class="table-scroll"><table class="data-table brs-table">
   <thead>${head}</thead><tbody>${body}</tbody></table></div>`;
@@ -366,7 +387,7 @@ function transportReportTab(report, isAdmin) {
   const groups = report.groups.map((group) => {
     const cards = group.items.map((item) => `<section class="dashboard-card report-card">
   <div class="card-header"><span>${escapeHtml(item.title)}</span></div>
-  ${brsTable(item)}
+  ${brsTable(item, { dataset: group.moda === 'Transportasi Udara' ? 'transportasi_udara' : 'transportasi_laut', provinsi: report.province, year: report.year, month: MONTH_NAMES.indexOf(report.monthName) + 1, monthName: report.monthName })}
   ${transportNarrativeBox(item, isAdmin)}
 </section>`).join('');
     return `<h3 class="section-title">${icon(group.icon)} Moda: ${escapeHtml(group.moda)}</h3>${cards}`;
@@ -800,6 +821,200 @@ function legendSwatch(color, label) {
   return `<span class="legend-swatch" style="background:${color}" aria-hidden="true"></span>${label}`;
 }
 
+/**
+ * Growth value rendered as a button that opens the justification dialog.
+ * `cell` is the canonical descriptor; `text` is what the table shows.
+ */
+function growthCellButton(cell, text) {
+  if (!cell || !Number.isFinite(Number(cell.growth_value))) return escapeHtml(text);
+  const payload = escapeHtml(JSON.stringify({
+    ...cell,
+    growth_value: Number(cell.growth_value),
+  }));
+  const label = escapeHtml(cell.label || 'Buka tren dan justifikasi');
+  return `<button type="button" class="growth-cell" data-cell="${payload}"`
+    + ` aria-haspopup="dialog" title="${label}">${escapeHtml(text)}</button>`;
+}
+
+/** Dialog markup + behaviour, injected once per page from layout(). */
+function growthDialog() {
+  return `<dialog id="growth-dialog" class="growth-dialog">
+  <div class="growth-head">
+    <div>
+      <h3 id="growth-title">Tren &amp; justifikasi</h3>
+      <p id="growth-sub" class="muted"></p>
+    </div>
+    <button type="button" class="growth-close" id="growth-close" aria-label="Tutup">&#10005;</button>
+  </div>
+  <div class="growth-body">
+    <div class="chart-frame" style="height:250px"><canvas id="growth-chart"></canvas></div>
+    <div id="growth-table" class="growth-table"></div>
+    <div class="growth-note">
+      <label for="growth-reason"><b>Justifikasi / fenomena</b>
+        <span class="muted">mengapa perubahan ini terjadi?</span></label>
+      <textarea id="growth-reason" rows="4" maxlength="2000"
+        placeholder="Contoh: penurunan akibat cuaca buruk dan berkurangnya jadwal penerbangan."></textarea>
+      <div id="growth-meta" class="growth-meta muted"></div>
+    </div>
+  </div>
+  <div class="growth-foot">
+    <span id="growth-status" class="muted" role="status" aria-live="polite"></span>
+    <button type="button" class="btn btn-ghost" id="growth-cancel">Batal</button>
+    <button type="button" class="btn btn-primary" id="growth-save">Simpan</button>
+  </div>
+</dialog>`;
+}
+function growthScript() {
+  return `<script src="${CHARTS_CDN}"></script>
+<script>
+(function () {
+  var dlg = document.getElementById('growth-dialog');
+  if (!dlg) return;
+  var chart = null, cell = null, busy = false;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function labelFor(c) {
+    var parts = [c.entity || c.provinsi || c.dataset];
+    if (c.jenis) parts.push(c.jenis);
+    if (c.kelas && c.kelas !== -1) parts.push('Kelas ' + c.kelas);
+    parts.push(c.indicator);
+    parts.push(c.comparison === 'dprev' ? 'vs bulan lalu' : c.comparison === 'dlast' ? 'vs tahun lalu' : c.comparison === 'yoy' ? 'Y-on-Y' : 'M-to-M');
+    return parts.join(' · ');
+  }
+
+  function status(msg, tone) {
+    var el = $('growth-status');
+    el.textContent = msg || '';
+    el.style.color = tone === 'err' ? 'var(--negative)' : tone === 'ok' ? 'var(--positive)' : '';
+  }
+
+  function drawChart(series) {
+    var el = $('growth-chart');
+    if (!el || typeof Chart === "undefined") return;
+    if (chart) { chart.destroy(); chart = null; }
+    var nf = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
+    chart = new Chart(el, {
+      type: "line",
+      data: {
+        labels: series.labels,
+        datasets: [
+          { label: String(series.years[0]), data: series.previous, borderColor: "#70AD47",
+            backgroundColor: "#70AD47", borderWidth: 3, pointRadius: 3, tension: 0.25, spanGaps: true },
+          { label: String(series.years[1]), data: series.current, borderColor: "#ED7D31",
+            backgroundColor: "#ED7D31", borderWidth: 3, pointRadius: 3, tension: 0.25, spanGaps: true }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: false,
+          ticks: { callback: function (v) { return nf.format(v); } } } },
+        plugins: { legend: { position: "bottom" } }
+      }
+    });
+  }
+
+  function render(data) {
+    drawChart(data.series);
+    $('growth-title').textContent = labelFor(data.cell);
+    var v = data.cell.growth_value;
+    $('growth-sub').textContent = (v == null ? 'Tanpa pembanding' : (v > 0 ? '+' : '') + v.toFixed(2) + '%')
+      + ' · ' + data.cell.indicator;
+    $('growth-reason').value = data.note ? data.note.reason : '';
+    $('growth-meta').textContent = data.note
+      ? 'Terakhir diubah oleh ' + data.note.author + ' pada ' + new Date(data.note.updated_at).toLocaleString('id-ID')
+      : 'Belum ada justifikasi untuk sel ini.';
+    status('');
+  }
+
+  function open(btn) {
+    try { cell = JSON.parse(btn.dataset.cell); } catch (err) { return; }
+    dlg.showModal();
+    $('growth-title').textContent = 'Memuat…';
+    $('growth-sub').textContent = '';
+    $('growth-reason').value = '';
+    $('growth-meta').textContent = '';
+    status('Memuat data…');
+    var qs = new URLSearchParams(cell).toString();
+    fetch("/api/growth?" + qs, { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { status(res.j.error || "Gagal memuat.", "err"); return; }
+        render(res.j);
+      })
+      .catch(function () { status("Tidak dapat menghubungi server.", "err"); });
+  }
+
+  document.addEventListener("click", function (ev) {
+    var btn = ev.target.closest(".growth-cell");
+    if (!btn) return;
+    ev.preventDefault();
+    open(btn);
+  });
+
+  function close() { dlg.close(); }
+  $('growth-close').addEventListener('click', close);
+  $('growth-cancel').addEventListener('click', close);
+
+  $('growth-save').addEventListener('click', function () {
+    if (busy || !cell) return;
+    var reason = $('growth-reason').value.trim();
+    if (reason.length < 5) { status("Justifikasi minimal 5 karakter.", "err"); return; }
+    busy = true;
+    status('Menyimpan…');
+    fetch("/api/growth/note", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cell: cell, reason: reason })
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        busy = false;
+        if (!res.ok) { status(res.j.error || "Gagal menyimpan.", "err"); return; }
+        status("Tersimpan.", "ok");
+        $('growth-meta').textContent = 'Terakhir diubah oleh ' + res.j.note.author +
+          ' pada ' + new Date(res.j.note.updated_at).toLocaleString('id-ID');
+        markCell(cell);
+      })
+      .catch(function () { busy = false; status("Tidak dapat menyimpan.", "err"); });
+  });
+
+  // Mark cells that already carry a note (dot on the button).
+  function markCell(c) {
+    var key = [c.dataset, c.provinsi, c.entity || "", c.jenis || "", c.kelas, c.indicator, c.year, c.month, c.comparison].join("|");
+    document.querySelectorAll(".growth-cell").forEach(function (b) {
+      try {
+        var d = JSON.parse(b.dataset.cell);
+        var k = [d.dataset, d.provinsi, d.entity || "", d.jenis || "", d.kelas, d.indicator, d.year, d.month, d.comparison].join("|");
+        if (k === key) b.classList.add("has-note");
+      } catch (err) { /* ignore */ }
+    });
+  }
+
+  // Seed markers from the server for every dataset present on the page.
+  var seen = {};
+  document.querySelectorAll(".growth-cell").forEach(function (b) {
+    var d; try { d = JSON.parse(b.dataset.cell); } catch (e) { return; }
+    var k = d.dataset + "|" + d.year + "|" + d.month;
+    if (seen[k]) return;
+    seen[k] = true;
+    fetch("/api/growth/notes?dataset=" + encodeURIComponent(d.dataset) + "&year=" + d.year + "&month=" + d.month,
+      { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.keys) return;
+        document.querySelectorAll(".growth-cell").forEach(function (b2) {
+          var d2; try { d2 = JSON.parse(b2.dataset.cell); } catch (e) { return; }
+          var k2 = [d2.dataset, d2.provinsi, d2.entity || "", d2.jenis || "", d2.kelas, d2.indicator, d2.year, d2.month, d2.comparison].join("|");
+          if (j.keys.indexOf(k2) !== -1) b2.classList.add("has-note");
+        });
+      })
+      .catch(function () { /* markers are best-effort */ });
+  });
+})();
+</script>`;
+}
 function valueGrid(series, colors = {}) {
   const months = series.labels.map((label, i) => ({ label, i }))
     .filter(({ i }) => series.prev[i] != null || series.cur[i] != null);
@@ -847,8 +1062,30 @@ function reportTab(report, isAdmin) {
     const fmt = (v) => (v === undefined || v === null || v === 'undefined') ? '-' : v;
     const table = `<div class="table-scroll"><table class="data-table">
   <thead><tr><th>Kelas Akomodasi</th><th>${escapeHtml(entry.table.columns.last)}</th><th>${escapeHtml(entry.table.columns.prev)}</th><th>${escapeHtml(entry.table.columns.cur)}</th><th>${escapeHtml(entry.table.columns.dPrev)}</th><th>${escapeHtml(entry.table.columns.dLast)}</th></tr></thead>
-  <tbody>${entry.table.body.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${fmt(r.last)}</td><td>${fmt(r.prev)}</td><td>${fmt(r.current)}</td><td>${fmt(r.dPrev)}</td><td>${fmt(r.dLast)}</td></tr>`).join('')}</tbody>
-  <tfoot><tr><th>Total</th><td>${fmt(entry.table.total.last)}</td><td>${fmt(entry.table.total.prev)}</td><td>${fmt(entry.table.total.current)}</td><td>${fmt(entry.table.total.dPrev)}</td><td>${fmt(entry.table.total.dLast)}</td></tr></tfoot>
+  <tbody>${entry.table.body.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${fmt(r.last)}</td><td>${fmt(r.prev)}</td><td>${fmt(r.current)}</td><td>${growthCellButton({
+    dataset: 'all_data', provinsi: report.province, entity: '', jenis: entry.jenis,
+    kelas: r.kelas, indicator: ind.key, year: report.year, month: Number(report.month),
+    comparison: 'dprev', growth_value: r.changePrev,
+    label: `${r.label} - Δ vs bulan lalu (${entry.jenis}, ${report.month})`,
+  }, fmt(r.dPrev))}</td>
+<td>${growthCellButton({
+    dataset: 'all_data', provinsi: report.province, entity: '', jenis: entry.jenis,
+    kelas: r.kelas, indicator: ind.key, year: report.year, month: Number(report.month),
+    comparison: 'dlast', growth_value: r.changeLast,
+    label: `${r.label} - Δ vs tahun lalu (${entry.jenis}, ${report.month})`,
+  }, fmt(r.dLast))}</td></tr>`).join('')}</tbody>
+  <tfoot><tr><th>Total</th><td>${fmt(entry.table.total.last)}</td><td>${fmt(entry.table.total.prev)}</td><td>${fmt(entry.table.total.current)}</td><td>${growthCellButton({
+    dataset: 'all_data', provinsi: report.province, entity: '', jenis: entry.jenis,
+    kelas: -1, indicator: ind.key, year: report.year, month: Number(report.month),
+    comparison: 'dprev', growth_value: entry.table.total.changePrev,
+    label: `Total - Δ vs bulan lalu (${entry.jenis}, ${report.month})`,
+  }, fmt(entry.table.total.dPrev))}</td>
+<td>${growthCellButton({
+    dataset: 'all_data', provinsi: report.province, entity: '', jenis: entry.jenis,
+    kelas: -1, indicator: ind.key, year: report.year, month: Number(report.month),
+    comparison: 'dlast', growth_value: entry.table.total.changeLast,
+    label: `Total - Δ vs tahun lalu (${entry.jenis}, ${report.month})`,
+  }, fmt(entry.table.total.dLast))}</td></tr></tfoot>
 </table></div>`;
     const canvasId = `yoy-${ind.key}-${entry.jenis.replace(/\s+/g, '-')}`;
     configs.push({

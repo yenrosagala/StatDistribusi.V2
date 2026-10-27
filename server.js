@@ -27,6 +27,8 @@ import { PEMETAAN_WILAYAH, computeUploadStats, countExistingRows, detectFileMeta
 import Busboy from 'busboy';
 import { EXPORT_MIME, checkExporter, exportFileName, runExport } from './export.js';
 import { deleteStaged, getStaged, pruneStaged, putStaged, stagingStore } from './upload-store.js';
+import { cellKey, getNote, normaliseCell, noteKeysFor, saveNote } from './growth-notes.js';
+import { buildSeries, isKnownIndicator } from './growth-series.js';
 import { buildPariwisataAdmin } from './pariwisata-admin.js';
 import {
   PARIWISATA_SHEET, parsePariwisataFile, savePariwisata, countExistingPeriods,
@@ -350,6 +352,7 @@ async function loadTransportReport(url, periods, selected) {
         label,
         title: `Tabel ${tableNo} Perkembangan ${label} ${angkutan} Dalam Negeri Provinsi ${province}, ${monthName} ${year}`,
         rowLabel: target.moda === 'Transportasi Udara' ? 'Bandara' : 'Pelabuhan/Kabupaten',
+        col: table.col,
         columns: table.columns,
         rows: table.rows,
         narrative: { source: cachedText ? 'Database (Cached)' : 'Sistem Fallback', paras },
@@ -1037,6 +1040,56 @@ const requestHandler = async (req, res) => {
       return;
     }
 
+    if (url.pathname === '/api/growth' && req.method === 'GET') {
+      const cell = normaliseCell(Object.fromEntries(url.searchParams));
+      if (!cell) return json(res, { error: 'Parameter sel tidak lengkap.' }, 400);
+      if (!isKnownIndicator(cell.dataset, cell.indicator)) {
+        return json(res, { error: 'Indikator tidak dikenal.' }, 400);
+      }
+      try {
+        const [series, note] = await Promise.all([buildSeries(cell), getNote(cell)]);
+        return json(res, { cell: { ...cell, key: cellKey(cell) }, series, note });
+      } catch (err) {
+        console.warn(`[growth] ${err.message}`);
+        return json(res, { error: err.message }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/growth/notes' && req.method === 'GET') {
+      const dataset = String(url.searchParams.get('dataset') || '');
+      const year = Number(url.searchParams.get('year'));
+      const month = Number(url.searchParams.get('month'));
+      if (!dataset || !Number.isInteger(year) || !Number.isInteger(month)) {
+        return json(res, { error: 'Parameter tidak lengkap.' }, 400);
+      }
+      try {
+        const keys = await noteKeysFor(dataset, year, month);
+        return json(res, { keys: [...keys] });
+      } catch (err) {
+        return json(res, { error: err.message }, 500);
+      }
+    }
+    if (url.pathname === '/api/growth/note' && req.method === 'POST') {
+      let body;
+      try {
+        body = JSON.parse(await readBody(req, 100_000));
+      } catch {
+        return json(res, { error: 'Body tidak valid.' }, 400);
+      }
+      const cell = normaliseCell(body.cell || {});
+      if (!cell) return json(res, { error: 'Sel tidak lengkap.' }, 400);
+      const reason = String(body.reason || '').trim();
+      if (reason.length < 5) return json(res, { error: 'Justifikasi minimal 5 karakter.' }, 400);
+      if (reason.length > 2000) return json(res, { error: 'Justifikasi maksimal 2000 karakter.' }, 400);
+      try {
+        // Author always comes from the signed session, never the request body.
+        const note = await saveNote(cell, reason, session.name);
+        return json(res, { ok: true, note });
+      } catch (err) {
+        console.warn(`[growth] simpan gagal: ${err.message}`);
+        return json(res, { error: 'Gagal menyimpan justifikasi.' }, 500);
+      }
+    }
     if (url.pathname === '/api/export-status') {
       if (session.role !== 'admin') return json(res, { error: 'Hanya admin' }, 403);
       return json(res, await checkExporter());
