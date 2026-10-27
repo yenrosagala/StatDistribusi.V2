@@ -92,6 +92,19 @@ export async function saveNote(cell, reason, author) {
   return rows[0];
 }
 
+/** Remove the justification for one cell. Returns true when a row was removed. */
+export async function deleteNote(cell) {
+  await ensureTable();
+  const { rowCount } = await pool.query(
+    `DELETE FROM growth_notes
+      WHERE dataset=$1 AND provinsi=$2 AND entity=$3 AND jenis=$4 AND kelas=$5
+        AND indicator=$6 AND year=$7 AND month=$8 AND comparison=$9`,
+    [cell.dataset, cell.provinsi, cell.entity, cell.jenis, cell.kelas,
+      cell.indicator, cell.year, cell.month, cell.comparison],
+  );
+  return rowCount > 0;
+}
+
 /** Keys of every note in one dataset+period, so the table can mark them. */
 export async function noteKeysFor(dataset, year, month) {
   await ensureTable();

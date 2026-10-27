@@ -21,8 +21,10 @@ exports/
 Thumbs.db
 .DS_Store
 
-# database backups (contain data)
-backup/
+# database backups contain real data; only the schema travels with the repo
+backup/*
+!backup/schema_*.sql
+!backup/README.md
 
 # generated summary PDFs
 Ringkasan_*.pdf

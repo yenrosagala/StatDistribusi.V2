@@ -875,6 +875,7 @@ function growthDialog() {
   </div>
   <div class="growth-foot">
     <span id="growth-status" class="muted" role="status" aria-live="polite"></span>
+    <button type="button" class="btn btn-danger" id="growth-delete" hidden>Hapus</button>
     <button type="button" class="btn btn-ghost" id="growth-cancel">Batal</button>
     <button type="button" class="btn btn-primary" id="growth-save">Simpan</button>
   </div>
@@ -968,6 +969,7 @@ function growthScript() {
     $('growth-meta').textContent = data.note
       ? 'Terakhir diubah oleh ' + data.note.author + ' pada ' + new Date(data.note.updated_at).toLocaleString('id-ID')
       : 'Belum ada justifikasi untuk sel ini.';
+    $('growth-delete').hidden = !data.note;
     status('');
   }
 
@@ -980,6 +982,7 @@ function growthScript() {
     kpi0.className = 'growth-kpi-value';
     $('growth-kpi-label').textContent = '';
     $('growth-kpi-compare').textContent = '';
+    $('growth-delete').hidden = true;
     $('growth-reason').value = '';
     $('growth-meta').textContent = '';
     status('Memuat data…');
@@ -1027,6 +1030,40 @@ function growthScript() {
       })
       .catch(function () { busy = false; status("Tidak dapat menyimpan.", "err"); });
   });
+  $('growth-delete').addEventListener('click', function () {
+    if (busy || !cell) return;
+    if (!window.confirm("Hapus justifikasi untuk sel ini?")) return;
+    busy = true;
+    status("Menghapus...");
+    fetch("/api/growth/note/delete", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cell: cell })
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        busy = false;
+        if (!res.ok) { status(res.j.error || "Gagal menghapus.", "err"); return; }
+        $('growth-reason').value = "";
+        $('growth-delete').hidden = true;
+        $('growth-meta').textContent = "Belum ada justifikasi untuk sel ini.";
+        status("Justifikasi dihapus.", "ok");
+        unmarkCell(cell);
+      })
+      .catch(function () { busy = false; status("Tidak dapat menghapus.", "err"); });
+  });
+
+  function unmarkCell(c) {
+    var key = [c.dataset, c.provinsi, c.entity || "", c.jenis || "", c.kelas, c.indicator, c.year, c.month, c.comparison].join("|");
+    document.querySelectorAll(".growth-cell").forEach(function (b) {
+      try {
+        var d = JSON.parse(b.dataset.cell);
+        var k = [d.dataset, d.provinsi, d.entity || "", d.jenis || "", d.kelas, d.indicator, d.year, d.month, d.comparison].join("|");
+        if (k === key) b.classList.remove("has-note");
+      } catch (err) { /* ignore */ }
+    });
+  }
 
   // Mark cells that already carry a note (dot on the button).
   function markCell(c) {

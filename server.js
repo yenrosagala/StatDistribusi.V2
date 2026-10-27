@@ -27,7 +27,7 @@ import { PEMETAAN_WILAYAH, computeUploadStats, countExistingRows, detectFileMeta
 import Busboy from 'busboy';
 import { EXPORT_MIME, checkExporter, exportFileName, runExport } from './export.js';
 import { deleteStaged, getStaged, pruneStaged, putStaged, stagingStore } from './upload-store.js';
-import { cellKey, getNote, normaliseCell, noteKeysFor, saveNote } from './growth-notes.js';
+import { cellKey, deleteNote, getNote, normaliseCell, noteKeysFor, saveNote } from './growth-notes.js';
 import { collectNotes, getCached, hashNotes, monthName, notePeriods, saveSummary } from './growth-summary.js';
 import { generateSummary, renderSummaryPdf } from './summary-client.js';
 import { buildSeries, isKnownIndicator } from './growth-series.js';
@@ -1175,6 +1175,23 @@ const requestHandler = async (req, res) => {
       }
     }
 
+    if (url.pathname === '/api/growth/note/delete' && req.method === 'POST') {
+      let body;
+      try {
+        body = JSON.parse(await readBody(req, 100_000));
+      } catch {
+        return json(res, { error: 'Body tidak valid.' }, 400);
+      }
+      const cell = normaliseCell(body.cell || {});
+      if (!cell) return json(res, { error: 'Sel tidak lengkap.' }, 400);
+      try {
+        const removed = await deleteNote(cell);
+        return json(res, { ok: true, removed });
+      } catch (err) {
+        console.warn(`[growth] hapus gagal: ${err.message}`);
+        return json(res, { error: 'Gagal menghapus justifikasi.' }, 500);
+      }
+    }
     if (url.pathname === '/api/growth/notes' && req.method === 'GET') {
       const dataset = String(url.searchParams.get('dataset') || '');
       const year = Number(url.searchParams.get('year'));
