@@ -18,3 +18,7 @@ exports/
 # OS noise
 Thumbs.db
 .DS_Store
+
+# database backups (contain data)
+backup/
+
