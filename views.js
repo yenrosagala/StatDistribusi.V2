@@ -795,17 +795,22 @@ function narrativeBox(entry, isAdmin) {
   return `<div class="alert alert-info">${escapeHtml('Narasi AI belum tersedia untuk indikator ini. Hubungi admin untuk membuatnya.')}</div>`;
 }
 
-function valueGrid(series) {
+/** Small colour chip identifying a chart series inside a table cell. */
+function legendSwatch(color, label) {
+  return `<span class="legend-swatch" style="background:${color}" aria-hidden="true"></span>${label}`;
+}
+
+function valueGrid(series, colors = {}) {
   const months = series.labels.map((label, i) => ({ label, i }))
     .filter(({ i }) => series.prev[i] != null || series.cur[i] != null);
   if (!months.length) return '';
   const cell = (v) => (v == null || v === undefined || v === 'undefined' ? '' : formatIdNumber(v, 2));
-  const row = (label, values) => `<tr><th>${escapeHtml(label)}</th>${months.map(({ i }) => `<td>${cell(values && values[i])}</td>`).join('')}</tr>`;
+  const row = (label, values, color) => `<tr><th>${legendSwatch(color, escapeHtml(label))}</th>${months.map(({ i }) => `<td>${cell(values && values[i])}</td>`).join('')}</tr>`;
   const prevArr = Array.isArray(series.prev) ? series.prev : [];
   const curArr = Array.isArray(series.cur) ? series.cur : [];
   return `<div class="table-scroll"><table class="data-table yoy-grid">
   <thead><tr><th>Tahun</th>${months.map(({ label }) => `<th>${escapeHtml(label)}</th>`).join('')}</tr></thead>
-  <tbody>${row(String(series.prevYear || ''), prevArr)}${row(String(series.year || ''), curArr)}</tbody>
+  <tbody>${row(String(series.prevYear || ''), prevArr, colors.prev)}${row(String(series.year || ''), curArr, colors.cur)}</tbody>
 </table></div>`;
 }
 
@@ -836,13 +841,12 @@ function reportTab(report, isAdmin) {
   // legend sits beside each year instead of in a separate legend box.
   const CUR_COLOR = '#ED7D31';
   const PREV_COLOR = '#70AD47';
-  const swatch = (color, label) => `<span class="legend-swatch" style="background:${color}" aria-hidden="true"></span>${label}`;
 
   const configs = [];
   const cards = report.indicators.map((ind) => ind.jenis.map((entry) => {
     const fmt = (v) => (v === undefined || v === null || v === 'undefined') ? '-' : v;
     const table = `<div class="table-scroll"><table class="data-table">
-  <thead><tr><th>Kelas Akomodasi</th><th>${swatch(PREV_COLOR, escapeHtml(entry.table.columns.last))}</th><th>${swatch(CUR_COLOR, escapeHtml(entry.table.columns.prev))}</th><th>${swatch(CUR_COLOR, escapeHtml(entry.table.columns.cur))}</th><th>${escapeHtml(entry.table.columns.dPrev)}</th><th>${escapeHtml(entry.table.columns.dLast)}</th></tr></thead>
+  <thead><tr><th>Kelas Akomodasi</th><th>${escapeHtml(entry.table.columns.last)}</th><th>${escapeHtml(entry.table.columns.prev)}</th><th>${escapeHtml(entry.table.columns.cur)}</th><th>${escapeHtml(entry.table.columns.dPrev)}</th><th>${escapeHtml(entry.table.columns.dLast)}</th></tr></thead>
   <tbody>${entry.table.body.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${fmt(r.last)}</td><td>${fmt(r.prev)}</td><td>${fmt(r.current)}</td><td>${fmt(r.dPrev)}</td><td>${fmt(r.dLast)}</td></tr>`).join('')}</tbody>
   <tfoot><tr><th>Total</th><td>${fmt(entry.table.total.last)}</td><td>${fmt(entry.table.total.prev)}</td><td>${fmt(entry.table.total.current)}</td><td>${fmt(entry.table.total.dPrev)}</td><td>${fmt(entry.table.total.dLast)}</td></tr></tfoot>
 </table></div>`;
@@ -861,7 +865,7 @@ function reportTab(report, isAdmin) {
   ${narrativeBox({ ...entry, prov: report.province, tahun: report.year, bulan: report.month, indikator: ind.key }, isAdmin)}
   ${table}
   <div class="chart-frame" style="height:340px"><canvas id="${canvasId}"></canvas></div>
-  ${valueGrid(entry.series)}
+  ${valueGrid(entry.series, { prev: PREV_COLOR, cur: CUR_COLOR })}
 </section>`;
   }).join('')).join('');
 
