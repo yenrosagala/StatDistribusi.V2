@@ -115,6 +115,11 @@ function layout({ title, body, user, section, scripts = '', crumbs = null }) {
   const adminHref = `${section === 'transportasi' ? '/transportasi' : '/pariwisata'}?tab=admin`;
   const nav = [
     `<a class="side-link${section === 'home' ? ' active' : ''}" href="/">${icon('home')} Beranda</a>`,
+    // Report-only viewers still need a way to switch modules.
+    ...(user.role === 'rekon' ? [
+      `<a class="side-link${section === 'pariwisata' ? ' active' : ''}" href="/pariwisata?tab=report">${icon('building')} Pariwisata</a>`,
+      `<a class="side-link${section === 'transportasi' ? ' active' : ''}" href="/transportasi?tab=report">${icon('plane')} Transportasi</a>`,
+    ] : []),
     user.role === 'admin'
       ? `<a class="side-link${section === 'admin' ? ' active' : ''}" href="${adminHref}">${icon('lock')} Admin</a>`
       : '',

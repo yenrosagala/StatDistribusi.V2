@@ -778,7 +778,6 @@ const requestHandler = async (req, res) => {
     }
 
     if (url.pathname === '/') {
-      if (session.role === 'rekon') return redirect(res, '/pariwisata?tab=report');
       return sendHtml(res, await buildLanding(session));
     }
     if (url.pathname === '/pariwisata') return sendHtml(res, await buildPariwisata(session, url));
