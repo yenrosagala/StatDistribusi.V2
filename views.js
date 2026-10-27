@@ -684,8 +684,8 @@ export function pariwisataPage({ user, info, periods, tab = 'home', map = null, 
 <div class="metric-grid">
   <div class="metric-card"><span class="stat-label">Provinsi Tercakup</span><span class="metric-value">${info.provCount}</span></div>
   <div class="metric-card"><span class="stat-label">Periode Terakhir</span><span class="metric-value">${escapeHtml(periodLabel(latest.thn, latest.bln))}</span></div>
-  <div class="metric-card"><span class="stat-label">Rata-rata TPK (terakhir)</span><span class="metric-value">${numberFmt(info.metrics?.tpk, '%')}</span></div>
-  <div class="metric-card"><span class="stat-label">Rata-rata RLMTGAB (terakhir)</span><span class="metric-value">${numberFmt(info.metrics?.rlmtgab, ' malam')}</span></div>
+  <div class="metric-card"><span class="stat-label">Rata-rata TPK per Provinsi</span><span class="metric-value">${numberFmt(info.metrics?.tpk, '%')}</span></div>
+  <div class="metric-card"><span class="stat-label">Rata-rata RLMTGAB per Provinsi</span><span class="metric-value">${numberFmt(info.metrics?.rlmtgab, ' malam')}</span></div>
 </div>
 <section class="dashboard-card">
   <div class="card-header"><h3>Cakupan Data</h3><span>${info.rows.length} baris</span></div>

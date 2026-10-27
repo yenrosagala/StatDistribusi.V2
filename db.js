@@ -82,11 +82,30 @@ export async function pariwisataInfo() {
   }
 }
 
+const MONTH_NAMES_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli',
+  'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+/** Accepts a month name ("Agustus") or a 1-based number; all_data.month is integer. */
+function monthNumber(month) {
+  if (typeof month === 'number') return month;
+  const idx = MONTH_NAMES_ID.indexOf(String(month));
+  return idx === -1 ? Number(month) : idx + 1;
+}
+
 export async function latestMetrics(year, month) {
   try {
+    // Average of the per-province figure, not of every row. Each province then
+    // counts once regardless of how many kabupaten/kelas rows it happens to
+    // have (Papua Pegunungan has 5 rows, the others 8 in the same period).
     const rows = await query(
-      'SELECT AVG(tpk) AS tpk, AVG(rlmtgab) AS rlmtgab FROM all_data WHERE year = $1 AND month = $2',
-      [year, month],
+      `SELECT AVG(prov_tpk) AS tpk, AVG(prov_rlmtgab) AS rlmtgab
+         FROM (
+           SELECT kd_prov, AVG(tpk) AS prov_tpk, AVG(rlmtgab) AS prov_rlmtgab
+             FROM all_data
+            WHERE year = $1 AND month = $2
+            GROUP BY kd_prov
+         ) per_prov`,
+      [year, monthNumber(month)],
     );
     return rows[0] || null;
   } catch {
