@@ -847,7 +847,7 @@ const requestHandler = async (req, res) => {
     // Keep the export banner honest: re-probe (cached ~15s) before rendering pages.
     if (url.pathname === '/' || url.pathname === '/pariwisata' || url.pathname === '/transportasi') {
       try {
-        setExportAvailability((await checkExporter()).ok);
+        setExportAvailability(await checkExporter());
       } catch { /* probe failure must never break rendering */ }
     }
 

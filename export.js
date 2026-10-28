@@ -149,7 +149,13 @@ export async function runExport(kind, payload) {
 let cached = null;
 export async function checkExporter() {
   if (EXPORTS_DISABLED) return { ok: false, mode: 'disabled', message: DISABLED_MESSAGE };
-  const fresh = cached && (cached.ok || Date.now() - cached.checkedAt < 15_000);
+  // Status used to be cached forever once it was ok (`cached.ok ||` short-circuited
+  // the TTL), so a sidecar that died kept reporting "siap". Re-probe after a longer
+  // TTL when healthy, quickly when broken.
+  const ttl = cached && cached.ok
+    ? Number(process.env.EXPORT_STATUS_TTL_MS || 300_000)
+    : 15_000;
+  const fresh = cached && Date.now() - cached.checkedAt < ttl;
   if (fresh) return cached;
 
   if (await serviceHealth()) {

@@ -5,6 +5,7 @@ calls the Streamlit project's own builders instead of re-implementing OOXML or
 IDML in JavaScript, so both apps produce identical files.
 
 Usage:  python export_bridge.py <kind> <payload.json> <out-file>
+        python export_bridge.py --version   (selftest: imports the real deps)
 kinds:  pptx | docx | idml-transport | idml-pariwisata
 """
 
@@ -480,7 +481,33 @@ BUILDERS = {
 }
 
 
+def _selftest():
+    """Probe used by export.js `checkExporter()`: exit 0 only if the bridge can run.
+
+    Mengimpor dependensi yang benar-benar dipakai builder, bukan sekadar mencetak
+    versi - kalau pandas/docx/pptx/streamlit hilang, probe harus gagal di sini,
+    bukan nanti saat tombol unduh diklik.
+    """
+    import json as _json
+
+    hasil = {"python": sys.version.split()[0], "ok": True, "modules": {}}
+    for nama in ("pandas", "numpy", "sqlalchemy", "openpyxl", "docx", "pptx",
+                 "matplotlib", "fpdf", "lxml", "streamlit"):
+        try:
+            __import__(nama)
+            hasil["modules"][nama] = "ok"
+        except Exception as exc:  # noqa: BLE001 - any import failure means "not ready"
+            hasil["modules"][nama] = type(exc).__name__
+            hasil["ok"] = False
+    print(_json.dumps(hasil))
+    if not hasil["ok"]:
+        raise SystemExit(1)
+
+
 def main(argv):
+    if len(argv) >= 2 and argv[1] in ("--version", "--selftest"):
+        _selftest()
+        return
     if len(argv) != 4:
         raise SystemExit(__doc__)
     kind, payload_path, out_path = argv[1], argv[2], argv[3]

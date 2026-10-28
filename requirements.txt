@@ -1,0 +1,25 @@
+# Python dependencies for the document-export bridge and the export_service sidecar.
+#
+#   python -m venv .venv
+#   .venv/bin/pip install -r requirements.txt      (Windows: .venv\Scripts\pip)
+#   .venv/bin/python export_service.py             (start the sidecar)
+#
+# Needed by export_bridge.py (PPTX/DOCX/XLSX/IDML), gen_narrative.py, gen_summary.py
+# and summary_pdf.py. The vendored modules under vendor/py/modules import streamlit
+# at module level (they were written for the Streamlit app), so it is required here
+# too even though this app never runs a Streamlit UI.
+
+pandas
+numpy
+sqlalchemy
+psycopg[binary]
+openpyxl
+lxml
+matplotlib
+python-docx>=1.1.0
+python-pptx
+fpdf2
+requests>=2.31
+python-dotenv
+google-genai
+streamlit>=1.61

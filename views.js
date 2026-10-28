@@ -88,8 +88,22 @@ function chartScript(charts) {
 
 // Document export needs the Python bridge. server.js probes it at boot and
 // flips this flag so the UI can warn instead of failing on click.
-let exportAvailable = true;
-export function setExportAvailability(ok) { exportAvailable = ok === true; }
+function exportReason(status) {
+  if (status.mode === 'disabled') {
+    return status.message || 'Ekspor dinonaktifkan lewat DISABLE_EXPORTS.';
+  }
+  if (status.mode === 'none') {
+    const detail = status.message || status.code || 'tidak diketahui';
+    return `Python bridge tidak siap (${detail}).`;
+  }
+  return status.message || 'Python bridge tidak tersedia.';
+}
+
+let exportStatus = { ok: true, mode: 'unknown' };
+export function setExportAvailability(status) {
+  if (status && typeof status === 'object') exportStatus = status;
+  else exportStatus = { ok: status === true, mode: status === true ? 'ok' : 'unknown' };
+}
 
 function moduleCrumbs(moduleLabel, baseHref, tab) {
   const trail = [{ label: 'Beranda', href: '/' }];
@@ -157,9 +171,11 @@ function layout({ title, body, user, section, scripts = '', crumbs = null }) {
   </aside>
   <main class="app-main">
 ${crumbsHtml(crumbs)}
-${exportAvailable ? '' : `<div class="alert alert-warn export-alert">
-  <b>Ekspor dokumen nonaktif.</b> Python bridge tidak dapat dijalankan di lingkungan ini (EPERM).
-  Jalankan ulang <code>node server.js</code> dari terminal Anda agar tombol unduh PPTX/DOCX/IDML/XLSX berfungsi.
+${exportStatus.ok ? '' : `<div class="alert alert-warn export-alert">
+  <b>Ekspor dokumen nonaktif.</b> ${escapeHtml(exportReason(exportStatus))}
+  Jalankan <code>python export_service.py</code> di server ini, atau pastikan Python beserta
+  dependensinya terpasang (<code>pip install -r requirements.txt</code>) agar tombol unduh
+  PPTX/DOCX/IDML/XLSX berfungsi.
 </div>`}
 ${body}
     ${growthDialog()}
