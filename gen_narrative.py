@@ -155,7 +155,8 @@ def run(payload):
                     return {"error": f"prepare failed: {e}"}
             try:
                 from modules.report_page import generate_single_narrative_ai
-                txt, src = generate_single_narrative_ai(item['report_display_brs'].reset_index(), item['label'], str(prov), str(moda), item['bln'], item['thn'], item['prev_bln'], item['prev_thn'])
+                txt, src = generate_single_narrative_ai(item['report_display_brs'].reset_index(), item['label'], str(prov), str(moda), item['bln'], item['thn'], item['prev_bln'], item['prev_thn'],
+                                                   force=(action == 'regenerate'))
             except Exception as e:
                 return {"error": f"gen failed: {e}"}
             if not txt:

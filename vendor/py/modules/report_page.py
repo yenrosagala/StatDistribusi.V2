@@ -421,24 +421,57 @@ def parse_two_paragraphs(text):
     return None, None
 
 
-def generate_single_narrative_ai(df_flat, label, prov, moda, bln, thn, prev_bln, prev_thn):
+def generate_single_narrative_ai(df_flat, label, prov, moda, bln, thn, prev_bln, prev_thn,
+                                force=False):
     report_type = f"report_{moda}_{label}"
     period_key = f"{prov}|{bln}|{thn}"
     
-    db_text = get_db_narrative(report_type, period_key)
-    if db_text:
-        return db_text, "Database (Cached)"
+    # force=True dipakai tombol Regenerate: cache tidak boleh mencegat panggilan
+    # model, kalau tidak paragraf lama akan ditulis ulang apa adanya.
+    if not force:
+        db_text = get_db_narrative(report_type, period_key)
+        if db_text:
+            return db_text, "Database (Cached)"
 
     data_str = df_flat.to_string(index=False)
 
     prompt = (
-        "Anda adalah Kepala Pusat Statistik / Penasihat Kebijakan Utama yang menyusun ringkasan eksekutif strategis berstandar tinggi bagi Dewan Pimpinan dan Pengambil Kebijakan.\n"
-        f"Buatlah narasi Executive Summary tingkat tinggi yang padat dan tajam (tepat 2 paragraf) untuk indikator statistik \"{label}\" pada moda {moda} Wilayah Provinsi {prov} periode komparasi {bln} {thn} terhadap {prev_bln} {prev_thn}.\n\n"
-        "Pedoman & Fokus Penulisan:\n"
-        "- Paragraf 1: Analisis komprehensif kinerja bulanan (Month-to-Month/MTM), arah tren sektoral, serta kontribusi agregat dari wilayah-wilayah utama dalam hierarki BRS.\n"
-        "- Paragraf 2: Analisis mendalam kinerja kumulatif (Year-to-Date / Year-on-Year), pembacaan deviasi pertumbuhan, serta signifikansi fluktuasi antarwilayah dalam kerangka ekonomi regional.\n"
-        "- Gunakan diksi birokratik profesional, objektif, analitis, dengan standarisasi format angka Indonesia.\n"
-        "- Jangan sertakan pengantar, sapaan, catatan kaki, ataupun penutup. Langsung berikan 2 paragraf teks yang dipisahkan oleh satu baris kosong (\\n\\n).\n\n"
+        "Anda adalah penulis ringkasan statistik resmi BPS. Sasaran pembaca adalah masyarakat umum,\n"
+        "yaitu jurnalis, pelaku usaha, dan pegawai pemerintah non-teknis, bukan pembaca laporan teknis.\n"
+        "Tulis dengan bahasa Indonesia formal, tenang, dan objektif; tanpa gaya populer, tanpa sapaan,\n"
+        "tanpa opini.\n\n"
+        f"Tugas: ringkasan hasil statistik indikator \"{label}\" pada moda {moda} untuk Provinsi {prov},\n"
+        f"periode {bln} {thn} dibandingkan {prev_bln} {prev_thn}. Tepat 2 paragraf,\n"
+        "dipisahkan satu baris kosong.\n\n"
+        "Paragraf 1: apa yang terjadi bulan ini.\n"
+        "- Mulai dengan satu kalimat kesimpulan: naik, turun, atau stabil, beserta angkanya.\n"
+        "- Selalu tuliskan angka sebelum dan sesudah, bukan hanya selisihnya.\n"
+        "- Sebutkan pelabuhan atau bandara yang paling menonjol dan yang paling lemah, tanpa istilah teknis.\n\n"
+        "Paragraf 2: bagaimana dibanding tahun lalu, dan apa artinya.\n"
+        "- Bandingkan dengan bulan yang sama tahun lalu, dengan angka yang sama jelasnya.\n"
+        "- Tutup dengan satu kalimat makna praktis yang netral, tanpa menyimpulkan sebab-akibat\n"
+        "  (contoh: \"Angka yang lebih tinggi berarti lebih banyak penumpang atau barang pada September\n"
+        "  dibandingkan Agustus\"). Jangan memberi rekomendasi kebijakan.\n\n"
+        "Aturan bahasa (wajib):\n"
+        "- Kalimat maksimal 25 kata. Satu gagasan per kalimat. Hindari anak kalimat berganda.\n"
+        "- Setiap kalimat harus memuat angka atau fakta dari tabel. Hapus kalimat yang hanya\n"
+        "  menegaskan pentingnya temuan.\n"
+        "- Jangan gunakan istilah berikut; pakai padanannya:\n"
+        "  \"hierarki BRS\" -> \"rincian menurut pelabuhan/bandara\";\n"
+        "  \"kontribusi agregat\" -> \"gambaran keseluruhan\";\n"
+        "  \"deviasi pertumbuhan\" -> \"selisih\";\n"
+        "  \"signifikansi fluktuasi antarwilayah\" -> \"perbedaan antarwilayah\";\n"
+        "  \"MTM\" -> \"dibanding bulan sebelumnya\";\n"
+        "  \"YTD\" -> \"sejak awal tahun\";\n"
+        "  \"YoY\" -> \"dibanding bulan yang sama tahun lalu\";\n"
+        "  \"poin persentase\" -> \"poin\" (tetap sebutkan angka sebelum dan sesudah).\n"
+        "- Dilarang memakai: \"bukan hanya ... tetapi juga\", menandakan, mengisyaratkan, signifikan,\n"
+        "  komprehensif, mendalam, kontras, fundamental, krusial, kerangka, dinamika, tanda pisah\n"
+        "  panjang, dan daftar tiga hal yang dipaksakan.\n"
+        "- Sebutkan singkatan sekali lengkap pada pemakaian pertama.\n"
+        "- Gunakan format angka Indonesia: titik untuk ribuan, koma untuk desimal.\n"
+        "- Jangan menambah angka, sebab-akibat, atau rekomendasi yang tidak ada di tabel.\n"
+        "- Jangan sertakan judul, pengantar, catatan kaki, atau penutup.\n\n"
         "Sumber Data Tabel:\n"
         f"{data_str}"
     )

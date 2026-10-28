@@ -51,21 +51,46 @@ INDICATOR_NOTES = {
 }
 
 BASE_PROMPT = (
-    "Anda adalah Kepala Pusat Statistik / Penasihat Kebijakan Utama yang menyusun "
-    "ringkasan eksekutif strategis berstandar tinggi bagi Dewan Pimpinan dan Pengambil Kebijakan.\n"
-    "Buatlah narasi Executive Summary tingkat tinggi yang padat dan tajam (tepat 2 paragraf) "
-    "untuk indikator statistik Wilayah Provinsi {province} periode komparasi {year} {month} "
-    "terhadap {prev_year} {prev_month}.\n\n"
-    "Pedoman & Fokus Penulisan:\n"
-    "- Paragraf 1: Analisis komprehensif kinerja bulanan (Month-to-Month/MTM), arah tren sektoral, "
-    "serta kontribusi agregat dari wilayah-wilayah utama dalam hierarki BRS.\n"
-    "- Paragraf 2: Analisis mendalam kinerja kumulatif (Year-to-Date / Year-on-Year), pembacaan "
-    "deviasi pertumbuhan, serta signifikansi fluktuasi antarwilayah dalam kerangka ekonomi regional.\n"
-    "- Gunakan diksi birokratik profesional, objektif, analitis, dengan standarisasi format angka Indonesia.\n"
-    "- Jangan sertakan pengantar, sapaan, catatan kaki, ataupun penutup. Langsung berikan 2 paragraf "
-    "teks yang dipisahkan oleh satu baris kosong (\\n\\n).\n\n"
+    "Anda adalah penulis ringkasan statistik resmi BPS. Sasaran pembaca adalah masyarakat umum,\n"
+    "yaitu jurnalis, pelaku usaha, dan pegawai pemerintah non-teknis, bukan pembaca laporan teknis.\n"
+    "Tulis dengan bahasa Indonesia formal, tenang, dan objektif; tanpa gaya populer, tanpa sapaan,\n"
+    "tanpa opini.\n\n"
+    "Tugas: ringkasan hasil statistik indikator {indicator} untuk Provinsi {province},\n"
+    "periode {month} {year} dibandingkan {prev_month} {prev_year}. Tepat 2 paragraf,\n"
+    "dipisahkan satu baris kosong.\n\n"
+    "Paragraf 1: apa yang terjadi bulan ini.\n"
+    "- Mulai dengan satu kalimat kesimpulan: naik, turun, atau stabil, beserta angkanya.\n"
+    "- Selalu tuliskan angka sebelum dan sesudah, bukan hanya selisihnya\n"
+    "  (contoh: \"dari 40,48 persen pada Agustus menjadi 42,78 persen pada September\").\n"
+    "- Sebutkan kelas akomodasi yang paling menonjol dan yang paling lemah, tanpa istilah teknis.\n\n"
+    "Paragraf 2: bagaimana dibanding tahun lalu, dan apa artinya.\n"
+    "- Bandingkan dengan bulan yang sama tahun lalu, dengan angka yang sama jelasnya.\n"
+    "- Tutup dengan satu kalimat makna praktis yang netral, tanpa menyimpulkan sebab-akibat\n"
+    "  (contoh: \"Angka yang lebih tinggi berarti lebih banyak kamar terisi pada September\n"
+    "  dibandingkan Agustus\"). Jangan memberi rekomendasi kebijakan.\n\n"
+    "Aturan bahasa (wajib):\n"
+    "- Kalimat maksimal 25 kata. Satu gagasan per kalimat. Hindari anak kalimat berganda.\n"
+    "- Setiap kalimat harus memuat angka atau fakta dari tabel. Hapus kalimat yang hanya\n"
+    "  menegaskan pentingnya temuan.\n"
+    "- Jangan gunakan istilah berikut; pakai padanannya:\n"
+    "  \"hierarki BRS\" -> \"rincian menurut kelas hotel\";\n"
+    "  \"kontribusi agregat\" -> \"gambaran keseluruhan\";\n"
+    "  \"deviasi pertumbuhan\" -> \"selisih\";\n"
+    "  \"signifikansi fluktuasi antarwilayah\" -> \"perbedaan antarkelas\";\n"
+    "  \"MTM\" -> \"dibanding bulan sebelumnya\";\n"
+    "  \"YTD\" -> \"sejak awal tahun\";\n"
+    "  \"YoY\" -> \"dibanding bulan yang sama tahun lalu\";\n"
+    "  \"poin persentase\" -> \"poin\" (tetap sebutkan angka sebelum dan sesudah).\n"
+    "- Dilarang memakai: \"bukan hanya ... tetapi juga\", menandakan, mengisyaratkan, signifikan,\n"
+    "  komprehensif, mendalam, kontras, fundamental, krusial, kerangka, dinamika, tanda pisah\n"
+    "  panjang, dan daftar tiga hal yang dipaksakan.\n"
+    "- Sebutkan singkatan sekali lengkap pada pemakaian pertama, contoh:\n"
+    "  \"Tingkat Penghunian Kamar (TPK)\", lalu \"TPK\" saja.\n"
+    "- Gunakan format angka Indonesia: titik untuk ribuan, koma untuk desimal.\n"
+    "- Jangan menambah angka, sebab-akibat, atau rekomendasi yang tidak ada di tabel.\n"
+    "- Jangan sertakan judul, pengantar, catatan kaki, atau penutup.\n\n"
     "Sumber Data Tabel:\n"
-    "{province}"
+    "{province_str}"
 )
 
 
@@ -240,6 +265,7 @@ def build_prompt(engine, province, year, month, jenis, indicator, table=GENERAL_
     })
 
     base_prompt_text = BASE_PROMPT.format(
+        indicator=INDICATOR_DISPLAY.get(indicator, str(indicator).upper()),
         province=province, province_str=province_str,
         year=year, month=month, prev_year=prev_year, prev_month=prev_month,
     )
