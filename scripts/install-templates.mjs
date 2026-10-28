@@ -19,7 +19,7 @@ const candidates = [
 
 const looksValid = (dir) =>
   fs.existsSync(path.join(dir, 'BRS_Transportasi_Template Folder')) ||
-  fs.existsSync(path.join(dir, 'BRS PARIWISATA PAPUA SELATAN Template'));
+  fs.existsSync(path.join(dir, 'BRS Pariwisata Papua Selatan September 2026'));
 
 let source = null;
 for (const dir of candidates) {
@@ -31,7 +31,7 @@ if (!source) {
   for (const dir of candidates) console.error('  -', dir);
   console.error('\nSet TEMPLATES_SRC to the folder that contains:');
   console.error('  BRS_Transportasi_Template Folder/');
-  console.error('  BRS PARIWISATA PAPUA SELATAN Template/');
+  console.error('  BRS Pariwisata Papua Selatan September 2026/');
   process.exit(1);
 }
 

@@ -8,7 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCAL_FONTS = Path(__file__).resolve().parent / "public" / "fonts"
-REPO_FONTS = Path(__file__).resolve().parent.parent / "templates" / "BRS PARIWISATA PAPUA SELATAN Template" / "Document fonts"
+REPO_FONTS = (Path(__file__).resolve().parent / "templates" /
+              "BRS Pariwisata Papua Selatan September 2026" / "Document fonts")
 # Prefer the fonts shipped with node-app so the PDF renders standalone.
 FONTS = LOCAL_FONTS if LOCAL_FONTS.exists() else REPO_FONTS
 LOGO = Path(__file__).resolve().parent / "public" / "logo.png"
