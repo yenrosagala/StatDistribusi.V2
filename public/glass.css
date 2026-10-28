@@ -1,0 +1,192 @@
+/* ==========================================================================
+   Glassmorphism layer for the Node dashboard
+   --------------------------------------------------------------------------
+   Loaded AFTER style.css + app.css so it only re-skins surfaces, never layout.
+   Delete the <link> in views.js to fall back to the flat design.
+
+   Glass needs colour behind it to read: body::before paints a fixed mesh
+   gradient, and the panels below blur it with backdrop-filter. On a plain
+   #F8FAFC canvas the same panels would look like faint white boxes.
+
+   Legibility first: data tables get a much more opaque fill and no blur, so
+   figures and the growth cells keep their contrast.
+   ========================================================================== */
+
+:root {
+  --glass-bg:        rgba(255, 255, 255, .55);
+  --glass-bg-strong: rgba(255, 255, 255, .74);
+  --glass-bg-solid:  rgba(255, 255, 255, .88);
+  --glass-border:    rgba(255, 255, 255, .62);
+  --glass-border-in: rgba(255, 255, 255, .80);
+  --glass-blur:      18px;
+  --glass-saturate:  180%;
+  --glass-shadow:    0 10px 34px rgba(15, 23, 42, .12),
+                     inset 0 1px 0 var(--glass-border-in);
+  --glass-shadow-sm: 0 4px 16px rgba(15, 23, 42, .10),
+                     inset 0 1px 0 var(--glass-border-in);
+}
+
+/* --------------------------------------------------------------- 1. backdrop */
+html, body { background: var(--bg); }
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: -12vmax;               /* overscan hides the blur edge */
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 38% at 12% 10%, rgba(59, 130, 246, .42), transparent 62%),
+    radial-gradient(38% 34% at 86% 6%,  rgba(217, 119, 6, .34),  transparent 60%),
+    radial-gradient(46% 42% at 80% 86%, rgba(13, 148, 136, .34), transparent 62%),
+    radial-gradient(40% 38% at 8% 88%,  rgba(139, 92, 246, .30), transparent 60%),
+    radial-gradient(30% 28% at 52% 46%, rgba(236, 72, 153, .14), transparent 66%);
+  filter: blur(10px) saturate(115%);
+}
+
+.app-shell { background: transparent; }
+
+/* ---------------------------------------------------------- 2. glass surfaces */
+.app-side,
+.dashboard-card,
+.metric-card,
+.landing-card,
+.alert,
+.ai-note,
+.login-card,
+.section-hero,
+.tabs,
+.toolbar {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* Sidebar slightly more opaque: it sits over the strongest part of the mesh. */
+.app-side {
+  background: var(--glass-bg-strong);
+  border-right: 1px solid var(--glass-border);
+}
+
+/* The hero and toolbars are layout bands, not cards — no chrome by default. */
+.section-hero,
+.toolbar,
+.tabs {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.metric-card,
+.dashboard-card,
+.landing-card { border-radius: 14px; }
+
+/* ------------------------------------------------------------- 3. controls */
+.side-link,
+.tab {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-sm);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  backdrop-filter: blur(12px) saturate(160%);
+}
+
+.side-link:hover,
+.tab:hover {
+  background: var(--glass-bg-strong);
+  border-color: rgba(30, 64, 175, .35);
+}
+
+/* Solid accents stay solid: white text needs the contrast. A touch of
+   translucency keeps them in the same material family. */
+.side-link.active,
+.tab.active {
+  background: rgba(30, 64, 175, .90);
+  border-color: rgba(255, 255, 255, .35);
+  box-shadow: 0 6px 20px rgba(30, 64, 175, .35), inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+
+.btn {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-sm);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  backdrop-filter: blur(12px) saturate(160%);
+}
+
+.btn-primary {
+  background: rgba(30, 64, 175, .92);
+  border-color: rgba(255, 255, 255, .35);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(30, 64, 175, .35), inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+
+.btn-primary:hover { background: rgba(26, 52, 140, .96); }
+.btn-danger       { background: #B91C1C; border-color: #B91C1C; color: #fff; }
+
+/* --------------------------------------------------------------- 4. tables */
+/* No blur here on purpose: blurred backdrops behind dense numerals cost
+   legibility and GPU time on long tables. */
+.table-scroll,
+.data-table { background: var(--glass-bg-solid); }
+
+.data-table th {
+  background: rgba(233, 238, 246, .85);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.data-table tr:hover td { background: rgba(30, 64, 175, .07); }
+
+/* Inputs sit on glass: keep them bright so typed values stay readable. */
+.field input,
+.field-inline select,
+input[type="text"],
+input[type="password"],
+input[type="number"],
+select,
+textarea {
+  background: var(--glass-bg-solid);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+}
+
+/* ------------------------------------------------- 5. graceful degradation */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-bg:        rgba(255, 255, 255, .92);
+    --glass-bg-strong: rgba(255, 255, 255, .96);
+    --glass-bg-solid:  rgba(255, 255, 255, .98);
+  }
+  body::before { filter: none; opacity: .55; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-bg:        rgba(255, 255, 255, .95);
+    --glass-bg-strong: rgba(255, 255, 255, .98);
+    --glass-bg-solid:  #fff;
+  }
+  .app-side, .dashboard-card, .metric-card, .landing-card, .alert, .ai-note,
+  .side-link, .tab, .btn {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Exports/screenshots go through the server, but printing the page should
+   stay flat: blur and mesh gradients waste ink and break contrast. */
+@media print {
+  body::before { display: none; }
+  .app-side, .dashboard-card, .metric-card, .landing-card, .alert, .ai-note,
+  .side-link, .tab, .btn, .table-scroll, .data-table {
+    background: #fff !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}

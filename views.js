@@ -136,6 +136,7 @@ function layout({ title, body, user, section, scripts = '', crumbs = null }) {
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/glass.css">
 </head>
 <body>
 <div class="app-shell">
@@ -225,6 +226,7 @@ export function loginPage({ error = '' } = {}) {
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/glass.css">
 </head>
 <body>
 <div class="login-wrap">
@@ -1785,6 +1787,7 @@ export function errorPage(message) {
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/glass.css">
 </head>
 <body>
 <div class="login-wrap">

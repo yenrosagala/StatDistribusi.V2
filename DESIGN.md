@@ -466,3 +466,26 @@ Cards are rectangles at 12–16px radius; marketing buttons and category tabs ar
 - Don't set body copy in pure black (`#000000`) — the brand's ink is #171717 and body steps to `{colors.body}`.
 - Don't add a second decorative system — the mesh gradient is the only flourish; everything else is ink on white.
 - Don't loosen the display tracking — large Geist headings carry tight negative letter-spacing by design.
+
+## Glass theme layer (node-app)
+
+`public/glass.css` is loaded after `style.css` and `app.css` and re-skins surfaces
+with a glassmorphism treatment (reference: freefrontend's CSS glassmorphism
+collection). It intentionally overrides the rules above:
+
+- panels (`.dashboard-card`, `.metric-card`, `.landing-card`, `.alert`, `.ai-note`,
+  the sidebar, pills and buttons) use translucent white,
+  `backdrop-filter: blur(18px) saturate(180%)`, a 1px light border and a soft
+  layered shadow;
+- `body::before` paints a fixed mesh gradient behind the app, because glass over a
+  flat `#f8fafc` canvas reads as nothing at all;
+- data tables deliberately stay nearly opaque and unblurred: blurred backdrops
+  behind dense numerals cost legibility and GPU time;
+- solid accents (`.btn-primary`, `.active` pills/links) stay solid for contrast,
+  with a touch of translucency to sit in the same material family;
+- graceful degradation via `@supports not (backdrop-filter)`,
+  `prefers-reduced-transparency: reduce`, and `@media print` (all fall back to flat
+  opaque surfaces).
+
+To return to the flat design, remove the `glass.css` `<link>` lines in `views.js`
+and the `glass.css` entry in the `server.js` static allowlist.

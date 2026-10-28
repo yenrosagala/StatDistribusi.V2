@@ -809,7 +809,7 @@ const requestHandler = async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
   try {
-    if (req.method === 'GET' && /^\/(style\.css|app\.css|logo\.png|papua_provinces\.json)$/.test(url.pathname)) {
+    if (req.method === 'GET' && /^\/(style\.css|app\.css|glass\.css|logo\.png|papua_provinces\.json)$/.test(url.pathname)) {
       return await serveStatic(res, url.pathname);
     }
 
