@@ -660,6 +660,65 @@ def _embed_image(files, order, data, name, prov, thn, bln, token, label, warning
     return patched > 0
 
 
+def _embed_image_ke_frame(files, order, frame_sid, data, nama_paket, warnings):
+    """Tanam gambar ke frame yang tidak punya <Link> sama sekali.
+
+    Template yang di-save ulang dari InDesign bisa kehilangan seluruh elemen
+    <Link>: frame grafiknya masih ada (ContentType="GraphicType" + PathGeometry)
+    tapi kosong, jadi tidak ada URI yang bisa ditambal oleh _embed_image.
+    Di sini byte gambar ditulis sebagai <Contents> base64 di <Properties> pertama
+    frame, lalu elemen <Link> minimal (StoredState="Embedded") ditambahkan supaya
+    InDesign mengenalinya sebagai gambar tertanam, bukan frame kosong.
+    """
+    import base64
+    from urllib.parse import quote
+
+    if not data:
+        return False
+    link_path = "Links/" + nama_paket
+    files[link_path] = data
+    if link_path not in order:
+        order.append(link_path)
+
+    pola = re.compile(rb'<Rectangle\b[^>]*\bSelf="' + re.escape(frame_sid.encode()) + rb'"[^>]*>')
+    for nm in list(files):
+        if not (nm.startswith(("Spreads/", "MasterSpreads/")) and nm.endswith(".xml")):
+            continue
+        xml = files[nm]
+        m = pola.search(xml)
+        if not m:
+            continue
+        tutup = b"</Rectangle>"
+        end = xml.find(tutup, m.end())
+        if end < 0:
+            continue
+        block = xml[m.start():end + len(tutup)]
+
+        pm = re.search(rb"<Properties(\s[^>]*)?>", block)
+        close = block.find(b"</Properties>", pm.end()) if pm else -1
+        if close < 0:
+            warnings.append(f"{frame_sid}: frame grafik tanpa <Properties> - gambar dilewati.")
+            return False
+        isi = b"<Contents><![CDATA[" + base64.b64encode(data) + b"]]></Contents>"
+        block = block[:close] + isi + block[close:]
+
+        fmt = (b"$ID/JPEG" if nama_paket.lower().endswith((".jpg", ".jpeg"))
+               else b"$ID/Portable Network Graphics (PNG)")
+        uri = quote(link_path, safe="/").encode()
+        link = (b'<Link Self="' + (frame_sid + "lnk").encode() + b'" AssetURL="$ID/" '
+                b'AssetID="$ID/" RenditionData="Actual" LinkResourceURI="' + uri + b'" '
+                b'LinkResourceFormat="' + fmt + b'" StoredState="Embedded" ShowInUI="true" '
+                b'CanEmbed="true" CanUnembed="true" CanPackage="true" '
+                b'ImportPolicy="NoAutoImport" ExportPolicy="NoAutoExport" />')
+        akhir = block.rfind(tutup)
+        block = block[:akhir] + link + block[akhir:]
+
+        files[nm] = xml[:m.start()] + block + xml[end + len(tutup):]
+        return True
+    warnings.append(f"{frame_sid}: frame grafik tidak ditemukan - gambar tidak ditanam.")
+    return False
+
+
 # Aset bermuatan data di Links/ (grafik, QR, infografis) tidak ikut ditanam buta;
 # hanya _embed_image yang boleh menaruhnya, saat ada data/unggahan.
 _DATA_ASSET_TOKENS = ("infografis", "qrcode", "series hotel")

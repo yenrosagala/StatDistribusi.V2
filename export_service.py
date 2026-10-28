@@ -11,6 +11,8 @@ Then:  EXPORT_SERVICE_URL=http://127.0.0.1:8765 node server.js
 Routes:
     GET  /health   -> {"ok": true, "builders": [...]}
     POST /export   -> body {"kind": ..., "payload": {...}} -> binary file
+    POST /summary  -> generated growth summary
+    POST /narrative-> AI narrative (gen_narrative.run), JSON in -> JSON out
 """
 import json
 import os
@@ -21,6 +23,7 @@ sys.path.insert(0, __file__.rsplit("\\", 1)[0].rsplit("/", 1)[0])
 import export_bridge  # noqa: E402  (chdir + sys.path setup happens in the module)
 import gen_summary  # noqa: E402
 import summary_pdf  # noqa: E402
+import gen_narrative  # noqa: E402
 import tempfile  # noqa: E402
 
 MIME = {
@@ -62,6 +65,18 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/narrative":
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                req = json.loads(self.rfile.read(length) or b"{}")
+            except Exception as exc:
+                return self._send_json(400, {"error": "payload JSON tidak valid: %s" % exc})
+            try:
+                result = gen_narrative.run(req)
+            except Exception as exc:
+                return self._send_json(500, {"error": "%s: %s" % (type(exc).__name__, exc)})
+            return self._send_json(500 if result.get("error") else 200, result)
+
         if self.path == "/summary":
             length = int(self.headers.get("Content-Length") or 0)
             try:

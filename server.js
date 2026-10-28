@@ -1,8 +1,9 @@
-﻿import http from 'node:http';
+import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import {
   availablePeriods, cumulativeData, infographicRows, latestMetrics, narrative, pariwisataInfo,
   periodData, pool, reportDomain, reportNarratives, reportRef, reportRows,
@@ -43,6 +44,15 @@ const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('he
 const COOKIE = 'sid';
 const SESSION_SECONDS = 8 * 3600;
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
+// Directory holding the Python bridge scripts (gen_narrative.py, gen_summary.py).
+const NODE_ROOT = fileURLToPath(new URL('./', import.meta.url));
+// Same interpreter resolution as export.js / summary-client.js so all three spawn
+// sites agree; PYTHON_BIN overrides it where `python` is not on PATH.
+const PYTHON_BIN = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+// Optional sidecar (export_service.py). Preferred over spawning because some
+// sandboxes block child-process creation outright (`spawn EPERM`).
+const NARRATIVE_SERVICE_URL = (process.env.EXPORT_SERVICE_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '');
+const NARRATIVE_TIMEOUT_MS = Number(process.env.NARRATIVE_TIMEOUT_MS || 180_000);
 // ROOT_DIR kept for reference: assets are served from public/ now.
 
 const USERS = {
@@ -189,6 +199,70 @@ function denyExport(session) {
   return !EXPORT_ROLES.has(session.role);
 }
 
+/**
+ * Runs the Python bridge (gen_narrative.py) for the narrative endpoints.
+ * The script reads one JSON object on stdin and prints one JSON object on stdout.
+ * Resolves with the parsed payload; rejects with an Error whose message is safe to
+ * show to the user. Mirrors the spawn handling in summary-client.js / export.js.
+ */
+async function runNarrativeBridge(values) {
+  // Prefer the sidecar: some sandboxes deny child-process creation outright.
+  const viaService = await postNarrativeService(values);
+  if (viaService) return viaService;
+  return spawnNarrativeBridge(values);
+}
+
+/** POSTs to the sidecar. Returns null when no sidecar is listening. */
+async function postNarrativeService(values) {
+  try {
+    const health = await fetch(`${NARRATIVE_SERVICE_URL}/health`, { signal: AbortSignal.timeout(1500) });
+    if (!health.ok) return null;
+  } catch {
+    return null;
+  }
+  const res = await fetch(`${NARRATIVE_SERVICE_URL}/narrative`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(values),
+    signal: AbortSignal.timeout(NARRATIVE_TIMEOUT_MS),
+  });
+  return res.json();
+}
+
+function spawnNarrativeBridge(values) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(PYTHON_BIN, ['gen_narrative.py'], {
+        cwd: NODE_ROOT,
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+        windowsHide: true,
+      });
+    } catch (err) {
+      return reject(new Error(`Python bridge gagal dimulai (${err.code || err.message}).`));
+    }
+    let out = '', err = '';
+    child.stdout.on('data', (d) => { out += d.toString('utf8'); });
+    child.stderr.on('data', (d) => { err += d.toString('utf8'); });
+    // `error` fires for spawn failures that happen asynchronously (EPERM/EACCES/ENOENT).
+    child.on('error', (e) => {
+      reject(new Error(`Python bridge gagal dimulai (${e.code || e.message}).`));
+    });
+    child.on('close', (code) => {
+      if (code !== 0) {
+        const detail = (err || out).split('\n').filter(Boolean).slice(-3).join(' ');
+        return reject(new Error(detail || `gen_narrative.py keluar dengan kode ${code}.`));
+      }
+      try {
+        resolve(JSON.parse(out.trim()));
+      } catch {
+        reject(new Error('Python bridge mengembalikan JSON yang tidak valid.'));
+      }
+    });
+    child.stdin.write(JSON.stringify(values));
+    child.stdin.end();
+  });
+}
 function redirect(res, location, headers = {}) {
   res.writeHead(302, { Location: location, ...headers });
   res.end();
@@ -1008,31 +1082,13 @@ const requestHandler = async (req, res) => {
       if (session.role !== 'admin') return json(res, { error: 'Hanya admin' }, 403);
       const form = await parseForm(req);
       const values = form.values || {};
-      const kind = values.kind;
-      if (!kind) return json(res, { error: 'kind required' }, 400);
-      let child;
+      if (!values.kind) return json(res, { error: 'kind required' }, 400);
       try {
-        const child = spawn(PYTHON_BIN, ['gen_narrative.py'], { cwd: NODE_ROOT, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
+        const payload = await runNarrativeBridge({ ...values, action: 'generate' });
+        return json(res, payload, payload.error ? 500 : 200);
       } catch (err) {
-        return json(res, { error: `Narasi tidak dapat dibuat: Python bridge gagal dimulai (${err.code || err.message}).` }, 500);
+        return json(res, { error: `Narasi tidak dapat dibuat: ${err.message}` }, 500);
       }
-      let out = '', err = '';
-      child.stdout.on('data', d => { out += d.toString(); });
-      child.stderr.on('data', d => { err += d.toString(); });
-      child.on('error', e => { return json(res, { error: e.message }, 500); });
-      child.on('close', code => {
-        if (res.headersSent) return;
-        if (code !== 0) return json(res, { error: (err || out).split('\n').filter(Boolean).slice(-3).join(' ') }, 500);
-        try {
-          const j = JSON.parse(out.trim());
-          return json(res, j, j.error ? 500 : 200);
-        } catch {
-          return json(res, { error: 'bad json' }, 500);
-        }
-      });
-      child.stdin.write(JSON.stringify({ ...values, action: 'generate' }));
-      child.stdin.end();
-      return;
     }
 
     if (url.pathname === '/api/narrative/regenerate' && req.method === 'POST') {
@@ -1040,31 +1096,13 @@ const requestHandler = async (req, res) => {
       if (session.role !== 'admin') return json(res, { error: 'Hanya admin' }, 403);
       const form = await parseForm(req);
       const values = form.values || {};
-      const kind = values.kind;
-      if (!kind) return json(res, { error: 'kind required' }, 400);
-      let child;
+      if (!values.kind) return json(res, { error: 'kind required' }, 400);
       try {
-        const child = spawn(PYTHON_BIN, ['gen_narrative.py'], { cwd: NODE_ROOT, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
+        const payload = await runNarrativeBridge({ ...values, action: 'regenerate' });
+        return json(res, payload, payload.error ? 500 : 200);
       } catch (err) {
-        return json(res, { error: `Narasi tidak dapat dibuat: Python bridge gagal dimulai (${err.code || err.message}).` }, 500);
+        return json(res, { error: `Narasi tidak dapat dibuat: ${err.message}` }, 500);
       }
-      let out = '', err = '';
-      child.stdout.on('data', d => { out += d.toString(); });
-      child.stderr.on('data', d => { err += d.toString(); });
-      child.on('error', e => { return json(res, { error: e.message }, 500); });
-      child.on('close', code => {
-        if (res.headersSent) return;
-        if (code !== 0) return json(res, { error: (err || out).split('\n').filter(Boolean).slice(-3).join(' ') }, 500);
-        try {
-          const j = JSON.parse(out.trim());
-          return json(res, j, j.error ? 500 : 200);
-        } catch {
-          return json(res, { error: 'bad json' }, 500);
-        }
-      });
-      child.stdin.write(JSON.stringify({ ...values, action: 'regenerate' }));
-      child.stdin.end();
-      return;
     }
 
     const summaryParams = () => ({

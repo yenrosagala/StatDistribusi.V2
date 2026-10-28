@@ -166,7 +166,7 @@ ${body}
   </main>
 </div>
 ${scripts}
-${growthScript()}${summaryScript()}${adminTabsScript()}
+${narrativeScript()}${growthScript()}${summaryScript()}${adminTabsScript()}
 </body>
 </html>`;
 }
@@ -1208,6 +1208,48 @@ function summaryScript() {
 </script>`;
 }
 /** Switch admin panels; mirrors the choice into ?sub= so a reload keeps it. */
+function narrativeScript() {
+  return `<script>
+(function () {
+  // The narrative buttons are forms posting to /api/narrative/generate|regenerate,
+  // which answer with JSON. Left alone, the browser navigates to the API and shows
+  // the raw JSON body. Intercept the submit, POST in the background, then reload so
+  // the generated narrative appears in place.
+  document.addEventListener('submit', function (ev) {
+    var form = ev.target;
+    if (!form || !form.getAttribute) return;
+    var action = form.getAttribute('action') || '';
+    if (action.indexOf('/api/narrative/') !== 0) return;
+    ev.preventDefault();
+    var btn = form.querySelector('button[type="submit"]');
+    var original = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Membuat narasi...'; }
+    fetch(action, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      body: new URLSearchParams(new FormData(form)),
+      credentials: 'same-origin',
+    })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (p) {
+          return { ok: res.ok, status: res.status, payload: p };
+        });
+      })
+      .then(function (r) {
+        if (!r.ok || (r.payload && r.payload.error)) {
+          throw new Error((r.payload && r.payload.error) || ('HTTP ' + r.status));
+        }
+        window.location.reload();
+      })
+      .catch(function (err) {
+        window.alert('Narasi gagal dibuat: ' + err.message);
+        if (btn) { btn.disabled = false; btn.innerHTML = original; }
+      });
+  }, true);
+})();
+</script>`;
+}
+
 function adminTabsScript() {
   return `<script>
 (function () {

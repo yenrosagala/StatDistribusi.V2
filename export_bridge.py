@@ -182,20 +182,97 @@ def build_xlsx_transport(payload):
     return output.getvalue()
 
 
+# Bar chart geometry. The image is placed at exactly 462 x 167 pt on the sheet,
+# so the figure is built from the same physical size (inches) at a higher DPI:
+# the 12 pt type then lands at a true 12 pt in Excel instead of being scaled.
+BAR_W_PT = 462
+BAR_H_PT = 167
+BAR_FONT_PT = 12
+PX_PER_PT = 96 / 72          # 1 pt = 1.333 px in openpyxl's pixel units
+BAR_W_PX = BAR_W_PT * PX_PER_PT   # 616.0 px -> 462.00 pt
+BAR_H_PX = BAR_H_PT * PX_PER_PT   # 222.67 px -> 167.00 pt
+
+
+def _kelas_chart_png(labels, series):
+    """Grouped bar chart for one xlsx sheet - bare, no chart chrome.
+
+    Rendered at 462 x 167 pt (H:167, W:462) with 12 pt type. No Y axis, no grid,
+    no title and no background: each bar carries its own value label in the bar's
+    own colour and a black outline, so the numbers stay readable without an axis.
+    """
+    import numpy as np
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(BAR_W_PT / 72, BAR_H_PT / 72), dpi=200)
+    fig.patch.set_alpha(0)
+    ax.set_facecolor("none")
+
+    idx = np.arange(len(labels))
+    width = 0.8 / max(1, len(series))
+    for i, s in enumerate(series):
+        values = [np.nan if v is None else float(v) for v in s["values"]]
+        pos = idx - 0.4 + width * (i + 0.5)
+        bars = ax.bar(pos, values, width=width, label=s["label"], color=s["color"],
+                      edgecolor="black", linewidth=0.8, zorder=2)
+        for rect, value in zip(bars, values):
+            if np.isnan(value):
+                continue
+            ax.text(rect.get_x() + rect.get_width() / 2, value, f"{value:.2f}",
+                    ha="center", va="bottom", fontsize=BAR_FONT_PT,
+                    color=s["color"], zorder=3)
+
+    ax.set_xticks(idx)
+    ax.set_xticklabels(labels, fontsize=BAR_FONT_PT, color="#333333")
+    ax.tick_params(axis="x", length=0, pad=2)
+    ax.yaxis.set_visible(False)          # no Y axis
+    ax.grid(False)                       # no grid
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    ax.spines["bottom"].set_color("black")
+    ax.spines["bottom"].set_linewidth(0.8)
+    ax.margins(y=0.22)                   # room for the value labels
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16),
+              ncol=max(1, len(series)), frameon=False, fontsize=BAR_FONT_PT,
+              handlelength=1.2, columnspacing=1.2, labelspacing=0.2)
+    fig.tight_layout(pad=0.25)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", transparent=True)
+    plt.close(fig)
+    return buf.getvalue()
+
+
+def _tempel_grafik(ws, png, top_row, width=900, height=306):
+    """Attach a PNG to a worksheet, anchored below the table."""
+    from openpyxl.drawing.image import Image as XLImage
+
+    image = XLImage(io.BytesIO(png))
+    image.width = width
+    image.height = height
+    ws.add_image(image, f"A{top_row}")
+
+
 def build_xlsx_pariwisata(payload):
-    """Tabel TPK & RLMTGAB per kelas akomodasi, satu sheet per indikator/jenis.
+    """Tabel TPK & RLMT per kelas akomodasi, satu sheet per indikator/jenis.
 
     Angka dan tanda (*) mengikuti tabel halaman web (lihat
     ``pariwisata/ai.py``): kolom tahun lalu, bulan lalu, bulan ini, lalu dua
     kolom selisih. Sumbernya ``kumpulkan_kelas`` supaya persis data BRS.
-    """
-    import io
 
+    Setiap sheet juga memuat dua gambar: grafik batang bulan lalu vs bulan ini
+    per kelas, dan grafik garis PNG yang sama dengan yang ditanam ke paket .idml.
+    """
     import pandas as pd
 
     from modules.database import get_engine
     from modules.etl_engine import MONTH_NAMES
-    from modules.indesign_pariwisata import INDIKATOR, JENIS, kumpulkan_kelas, label_kelas
+    from modules.indesign_pariwisata import (
+        INDIKATOR, JENIS, RASIO_GRAFIK, SATUAN, SINGKATAN, TOKEN_GRAFIK,
+        grafik_png, kumpulkan_kelas, label_kelas,
+    )
 
     prov, thn, bln = payload["prov"], int(payload["thn"]), payload["bln"]
     if bln not in MONTH_NAMES:
@@ -215,8 +292,8 @@ def build_xlsx_pariwisata(payload):
         periode(thn - 1, bulan_ini),
         periode(prev_thn, prev_bln),
         periode(thn, bulan_ini),
-        f"Δ vs {periode(prev_thn, prev_bln)}",
-        f"Δ vs {periode(thn - 1, bulan_ini)}",
+        f"\u0394 vs {periode(prev_thn, prev_bln)}",
+        f"\u0394 vs {periode(thn - 1, bulan_ini)}",
     ]
 
     def angka(value):
@@ -224,6 +301,13 @@ def build_xlsx_pariwisata(payload):
 
     def selisih(value):
         return "-" if value is None or pd.isna(value) else f"{float(value):+.2f} pts"
+
+    def nilai_grafik(value):
+        return None if value is None or pd.isna(value) else round(float(value), 2)
+
+    # Grafik batang: hanya bulan lalu vs bulan ini.
+    WARNA_BULAN_LALU = "#FA9B3B"
+    WARNA_BULAN_INI = "#FDBD26"
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -234,6 +318,9 @@ def build_xlsx_pariwisata(payload):
                     continue
                 rse = blk.get("rse") or {}
                 body = []
+                chart_labels = []
+                chart_values = ([], [])
+
                 for kelas, (ly, prev, cur) in sorted(blk["rows"].items()):
                     nilai = angka(cur)
                     if nilai is not None and not pd.isna(rse.get(kelas)) and rse[kelas] > 0.25:
@@ -246,15 +333,47 @@ def build_xlsx_pariwisata(payload):
                         selisih(cur - prev if not pd.isna(cur) and not pd.isna(prev) else None),
                         selisih(cur - ly if not pd.isna(cur) and not pd.isna(ly) else None),
                     ])
+                    chart_labels.append(f"{label_kelas(jenis)} {kelas}")
+                    for bucket, value in zip(chart_values, (prev, cur)):
+                        bucket.append(nilai_grafik(value))
+
                 ly, prev, cur, d_prev, d_last = blk["total"]
                 body.append([
                     "Total", angka(ly), angka(prev), angka(cur),
                     selisih(d_prev), selisih(d_last),
                 ])
-                nama_sheet = f"{ind.upper()} - {jenis}"[:31]
+
+                nama_sheet = f"{SINGKATAN[ind]} - {jenis}"[:31]
                 pd.DataFrame(body, columns=header).to_excel(
                     writer, sheet_name=nama_sheet, index=False,
                 )
+
+                ws = writer.sheets[nama_sheet]
+                for kolom, lebar in zip("ABCDEF", (20, 15, 15, 15, 22, 22)):
+                    ws.column_dimensions[kolom].width = lebar
+                png = _kelas_chart_png(
+                    labels=chart_labels,
+                    series=[
+                        {"label": header[2], "values": chart_values[0],
+                         "color": WARNA_BULAN_LALU},
+                        {"label": header[3], "values": chart_values[1],
+                         "color": WARNA_BULAN_INI},
+                    ],
+                )
+                _tempel_grafik(ws, png, top_row=len(body) + 3,
+                               width=BAR_W_PX, height=BAR_H_PX)
+
+                # Grafik garis: PNG yang sama persis dengan yang ditanam ke paket
+                # .idml (grafik_png + TOKEN_GRAFIK), jadi Excel dan InDesign tidak
+                # pernah memuat gambar tren yang berbeda.
+                tren = blk.get("tren") or []
+                token = TOKEN_GRAFIK.get((ind, jenis))
+                if tren and token:
+                    png_garis = grafik_png(tren, ind, token)
+                    if png_garis:
+                        rasio = RASIO_GRAFIK.get(token, 2.2)
+                        _tempel_grafik(ws, png_garis, top_row=len(body) + 15,
+                                       width=900, height=int(round(900 / rasio)))
     output.seek(0)
     return output.getvalue()
 
@@ -299,6 +418,30 @@ def build_idml_transport(payload):
     return paket_zip(result.idml_bytes, name, template_dir=DEFAULT_TEMPLATE.parent)
 
 
+def _narasi_ai_pariwisata(engine, prov, thn, bln):
+    """{(jenis_akomodasi, indicator): narrative} untuk periode ini (bisa kosong)."""
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT jenis_akomodasi, indicator, narrative FROM pariwisata_ai_narratives "
+                    "WHERE TRIM(CAST(province AS TEXT)) = :prov AND year = :thn AND month = :bln"
+                ),
+                {"prov": str(prov).strip(), "thn": int(thn), "bln": int(MONTH_NUMBER[bln])},
+            ).fetchall()
+    except Exception:
+        return {}
+    return {(r[0], r[1]): r[2] for r in rows if r[2]}
+
+
+MONTH_NUMBER = {
+    "Januari": 1, "Februari": 2, "Maret": 3, "April": 4, "Mei": 5, "Juni": 6,
+    "Juli": 7, "Agustus": 8, "September": 9, "Oktober": 10, "November": 11, "Desember": 12,
+}
+
+
 def build_idml_pariwisata(payload):
     from modules.database import get_engine
     from modules.indesign_export import paket_zip
@@ -311,8 +454,11 @@ def build_idml_pariwisata(payload):
     data = kumpulkan_kelas(get_engine(), prov, thn, bln)
     if not data:
         raise SystemExit(f"Tidak ada data pariwisata untuk {prov} {bln} {thn}.")
+    # Narasi AI yang juga tampil di halaman web, supaya IDML tidak memakai teks
+    # gaya BPS yang berbeda dari laporan web.
+    ai_narasi = _narasi_ai_pariwisata(get_engine(), prov, thn, bln)
     result = fill_brs_pariwisata_template(
-        None, prov, thn, bln, data, level=prov,
+        None, prov, thn, bln, data, level=prov, ai_narasi=ai_narasi,
         nomor_brs=(payload.get("nomor") or "").strip() or None,
         tanggal_rilis=(payload.get("tanggal") or "").strip() or None,
         qr_bytes=_asset(payload, "qr")[0],

@@ -35,6 +35,7 @@ from modules.indesign_export import (
     PREV_LINE,
     _dump,
     _embed_image,
+    _embed_image_ke_frame,
     _link_images_relative,
     _parse,
     _prev_period,
@@ -58,8 +59,8 @@ TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates
 # dalamnya ditimpa oleh fill_brs_pariwisata_template (TPL_PROV_TOKENS).
 # level "full" = template utama; level lain hanya alias ke paket yang sama.
 _BRS_PARIWISATA = (
-    TEMPLATE_DIR / "BRS PARIWISATA PAPUA SELATAN Template"
-    / "BRS PARIWISATA PAPUA SELATAN (Data Juli 2026) rillis September 2026.idml"
+    TEMPLATE_DIR / "BRS Pariwisata Papua Selatan September 2026"
+    / "BRS_Pariwisata_Papua_Selatan_September_2026.idml"
 )
 TEMPLATES = {
     lv: _BRS_PARIWISATA
@@ -142,6 +143,10 @@ RINGKASAN_UTAMA = "uc40"
 KETERANGAN_GRAFIK = "udc5"
 JUDUL_HALAMAN = "u111a"
 GLOSARIUM_TPK = "ufd7"
+GRAFIK_FRAMES = {}
+# Frame QR & infografis pada template yang kehilangan elemen <Link>.
+QR_FRAME = None
+INFOGRAFIS_FRAME = None
 
 
 # ---------------------------------------------------------------------------
@@ -601,6 +606,15 @@ def kalimat_bln_lalu(rows, jenis, ind, bln, thn, total=None):
 # ---------------------------------------------------------------------------
 # Penulisan XML
 # ---------------------------------------------------------------------------
+def _psr_narasi(root):
+    """Paragraf narasi: gaya Body Text BRS, atau paragraf pertama bila template
+    pengganti memakai gaya lain (mis. $ID/NormalParagraphStyle)."""
+    psr = _psr_akar(root, "Body Text BRS")
+    if psr is None:
+        psr = _psr_akar(root)
+    return psr
+
+
 def _psr_akar(root, gaya=None):
     """``ParagraphStyleRange`` pertama yang gayanya cocok (atau apa pun)."""
     if root is None:
@@ -680,24 +694,130 @@ def _tulis_setelah_jangkar(psr, anchor, teks_baru, warnings, sid, tertulis=None)
         warnings.append(f"{sid}: paragraf glosarium tidak ditemukan — dilewati.")
         return
     segs = [s for s in _segments(psr) if _seg_text(s).strip()]
-    if len(segs) != 1:
-        warnings.append(f"{sid}:(glosarium) punya {len(segs)} segmen, deklaratif 1 — dilewati.")
+    if not segs:
+        warnings.append(f"{sid}:(glosarium) paragraf kosong - dilewati.")
         return
     teks = _seg_text(segs[0])
     i = teks.find(anchor)
-    if i < 0:
-        warnings.append(f"{sid}: teks jangkar '{anchor}' tidak ditemukan — dibiarkan.")
+    if i >= 0:
+        set_segments(psr, [teks[:i] + teks_baru], warnings, sid)
+        if tertulis is not None:
+            tertulis.add(sid)
         return
-    set_segments(psr, [teks[:i] + teks_baru], warnings, sid)
+    if len(segs) == 1:
+        warnings.append(f"{sid}: teks jangkar '{anchor}' tidak ditemukan - dibiarkan.")
+        return
+    # Template pengganti memisahkan definisi dan angka ke dua segmen: definisi
+    # dibiarkan utuh, narasi periode ditulis ke segmen terakhir.
+    isi = [_seg_text(s) for s in segs[:-1]] + [teks_baru]
+    set_segments(psr, isi, warnings, sid)
     if tertulis is not None:
         tertulis.add(sid)
+
+
+# ---------------------------------------------------------------------------
+# Profil slot per template
+# ---------------------------------------------------------------------------
+# InDesign memberi story id baru setiap dokumen di-save ulang, jadi template
+# pengganti tidak memakai id yang sama dengan template lama. Setiap profil
+# mendaftarkan id untuk tiap peran; profil dipilih otomatis ketika semua id
+# penandanya ada di dokumen. Id di bawah dipetakan dari isi dokumen: tabel dan
+# judul grafik dari teks header/gaya, narasi dari kecocokan dengan baris
+# ``pariwisata_ai_narratives`` periode itu, ringkasan/judul halaman dari posisi
+# frame yang identik dengan template lama.
+PROFILES = (
+    {
+        "nama": "BRS Pariwisata Papua Selatan September 2026",
+        "penanda": ("uc73", "u105b", "ud71", "ue06"),
+        "TABEL_SLOTS": {
+            "uc73": ("Hotel Bintang", "tpk"),
+            "u105b": ("Hotel Bintang", "rlmtgab"),
+            "ud71": ("Hotel Non Bintang", "tpk"),
+            "ue06": ("Hotel Non Bintang", "rlmtgab"),
+        },
+        "JUDUL_GRAFIK": {
+            "ufd4": ("Hotel Bintang", "tpk"),
+            "u1029": ("Hotel Bintang", "rlmtgab"),
+            "ud45": ("Hotel Non Bintang", "tpk"),
+            "u10dc": ("Hotel Non Bintang", "rlmtgab"),
+        },
+        "NARASI_BULAN_INI": {
+            "u10c1": ("Hotel Non Bintang", "tpk", None),
+            "udc4": ("Hotel Non Bintang", "rlmtgab", None),
+            "u1006": ("Hotel Bintang", "rlmtgab", None),
+        },
+        "NARASI_TAHUN_LALU": {
+            "ufeb": ("Hotel Bintang", "tpk"),
+            "u1043": ("Hotel Bintang", "rlmtgab"),
+            "ud5b": ("Hotel Non Bintang", "tpk"),
+            "u10f9": ("Hotel Non Bintang", "rlmtgab"),
+        },
+        "RINGKASAN": "ub78",
+        "RINGKASAN_UTAMA": "uc1b",
+        "KETERANGAN_GRAFIK": "udae",
+        "JUDUL_HALAMAN": "ube3",
+        "GLOSARIUM_TPK": "ufaf",
+        # Frame gambar grafik pada template ini tidak punya <Link>; gambarnya
+        # ditanam langsung ke frame tersebut lewat _embed_image_ke_frame.
+        "GRAFIK_FRAMES": {
+            ("tpk", "Hotel Bintang"): "ufc3",
+            ("rlmtgab", "Hotel Bintang"): "u101a",
+            ("tpk", "Hotel Non Bintang"): "uda1",
+            ("rlmtgab", "Hotel Non Bintang"): "u10f0",
+        },
+        "QR_FRAME": "uc0e",
+        "INFOGRAFIS_FRAME": "ue1b",
+    },
+)
+
+_SLOT_KEYS = (
+    "TABEL_SLOTS", "JUDUL_GRAFIK", "NARASI_BULAN_INI", "NARASI_TAHUN_LALU",
+    "RINGKASAN", "RINGKASAN_UTAMA", "KETERANGAN_GRAFIK", "JUDUL_HALAMAN",
+    "GLOSARIUM_TPK", "GRAFIK_FRAMES", "QR_FRAME", "INFOGRAFIS_FRAME",
+)
+
+
+def _pilih_profil(stories, warnings=None):
+    """Pasang id slot yang sesuai dengan template yang sedang dipakai.
+
+    Tanpa ini, template dengan id story baru akan lolos tanpa mengisi apa pun:
+    setiap slot dilaporkan "story tidak ditemukan" dan dokumen keluar persis
+    seperti isi template.
+    """
+    for prof in PROFILES:
+        if all(sid in stories for sid in prof["penanda"]):
+            for key in _SLOT_KEYS:
+                globals()[key] = prof[key]
+            if warnings is not None:
+                warnings.append(f"Profil slot template: {prof['nama']}.")
+            return prof
+    if warnings is not None:
+        warnings.append("Tidak ada profil slot yang cocok - memakai peta id template lama; "
+                        "periksa apakah template ini memang template yang didukung.")
+    return None
+
+
+def _paragraf_narasi(teks):
+    """Pecah narasi AI jadi paragraf siap cetak.
+
+    Markup web (``**``/``*``) dibuang dan baris baru dilipat jadi spasi karena
+    setiap slot IDML adalah satu paragraf. Teks kosong -> [] supaya pemanggil
+    jatuh ke kalimat gaya BPS.
+    """
+    import re
+
+    if not teks or not str(teks).strip():
+        return []
+    bersih = str(teks).replace("**", "").replace("*", "")
+    return [re.sub(r"\s+", " ", p).strip()
+            for p in re.split(r"\n\s*\n", bersih) if p.strip()]
 
 
 def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
                                  nomor_brs=None, tanggal_rilis=None,
                                  qr_bytes=None, qr_name=None,
                                  infografis_bytes=None, infografis_name=None,
-                                 level=None):
+                                 ai_narasi=None, level=None):
     """Isi template BRS Pariwisata dengan data dari :func:`kumpulkan_kelas`.
 
     ``template_bytes`` None -> dibaca dari :func:`resolve_template` menurut
@@ -714,6 +834,7 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
     stories = {n.split("/")[-1][len("Story_"):-len(".xml")]: n
                for n in order if n.startswith("Stories/Story_") and n.endswith(".xml")}
     roots = {sid: _parse(files[n]) for sid, n in stories.items()}
+    _pilih_profil(stories, warnings)
 
     # 0) Periode, provinsi, nomor BRS — sapu menyeluruh DULUAN, sebelum slot
     #    dinamis ditulis. Urutan ini penting: kalau sapu dijalankan belakangan,
@@ -776,18 +897,26 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
            [f"Infografis TPK dan RLMT {prov} {bln} {thn}"], warnings, KETERANGAN_GRAFIK,
            tertulis=tertulis)
 
+    narasi_ai = set()
+
     # 3) Narasi pembanding bulan sebelumnya
     for sid, (jenis, ind, jangkar) in NARASI_BULAN_INI.items():
         root, blok = roots.get(sid), data.get((ind, jenis))
         if root is None or not blok:
             continue
-        kalimat = kalimat_bln_ini(blok["rows"], jenis, ind, prov, bln, thn, prev_bln, prev_thn,
-                                  total=total_blok(blok))
+        paragraf = _paragraf_narasi((ai_narasi or {}).get((jenis, ind)))
+        if paragraf:
+            # Paragraf pertama narasi AI = pembacaan bulanan (MTM).
+            kalimat = paragraf[0]
+            narasi_ai.add(sid)
+        else:
+            kalimat = kalimat_bln_ini(blok["rows"], jenis, ind, prov, bln, thn, prev_bln, prev_thn,
+                                      total=total_blok(blok))
         if jangkar:
             _tulis_setelah_jangkar(_psr_akar(root, "Body Text BRS"), jangkar, kalimat,
                                    warnings, sid, tertulis=tertulis)
         else:
-            _tulis(_psr_akar(root, "Body Text BRS"), [kalimat], warnings, sid,
+            _tulis(_psr_narasi(root), [kalimat], warnings, sid,
                    tab=True, tertulis=tertulis)
 
     # 4) Narasi pembanding bulan sama tahun sebelumnya
@@ -795,8 +924,14 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
         root, blok = roots.get(sid), data.get((ind, jenis))
         if root is None or not blok:
             continue
-        _tulis(_psr_akar(root, "Body Text BRS"),
-               [kalimat_bln_lalu(blok["rows"], jenis, ind, bln, thn, total_blok(blok))], warnings, sid,
+        paragraf = _paragraf_narasi((ai_narasi or {}).get((jenis, ind)))
+        if paragraf:
+            # Paragraf kedua narasi AI = pembacaan tahunan (YTD/YoY).
+            kalimat = paragraf[1] if len(paragraf) > 1 else paragraf[0]
+            narasi_ai.add(sid)
+        else:
+            kalimat = kalimat_bln_lalu(blok["rows"], jenis, ind, bln, thn, total_blok(blok))
+        _tulis(_psr_narasi(root), [kalimat], warnings, sid,
                tab=True, tertulis=tertulis)
 
     # 5) Ringkasan (2 segmen per paragraf)
@@ -814,10 +949,15 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
     # 7) Narasi TPK bintang yang menyatu dengan glosarium
     root, blok = roots.get(GLOSARIUM_TPK), data.get(("tpk", "Hotel Bintang"))
     if root is not None and blok:
+        paragraf = _paragraf_narasi((ai_narasi or {}).get(("Hotel Bintang", "tpk")))
+        if paragraf:
+            kalimat = paragraf[0]
+            narasi_ai.add(GLOSARIUM_TPK)
+        else:
+            kalimat = kalimat_bln_ini(blok["rows"], "Hotel Bintang", "tpk", prov, bln, thn,
+                                      prev_bln, prev_thn, total=total_blok(blok))
         _tulis_setelah_jangkar(
-            _psr_akar(root), "TPK Hotel Bintang",
-            kalimat_bln_ini(blok["rows"], "Hotel Bintang", "tpk", prov, bln, thn,
-                            prev_bln, prev_thn, total=total_blok(blok)), warnings, GLOSARIUM_TPK, tertulis=tertulis)
+            _psr_akar(root), "TPK Hotel Bintang", kalimat, warnings, GLOSARIUM_TPK, tertulis=tertulis)
 
     # 8) Cakupan slot — jangan diamkan. Setiap story yang memuat angka gaya BPS
     #    (dua desimal) WAJIB sudah tertulisi; kalau ada yang tidak, story itu
@@ -852,9 +992,13 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
         n = sum(1 for _, _, v in tren if not pd.isna(v))
         png = grafik_png(tren, ind, token)
         if png:
-            _embed_image(files, order, png, f"{token}.png", prov, thn, bln,
-                         token, f"Grafik {SINGKATAN[ind]} {jenis}", warnings,
-                         nama_paket=f"{token}.png")
+            frame_grafik = GRAFIK_FRAMES.get((ind, jenis))
+            if frame_grafik:
+                _embed_image_ke_frame(files, order, frame_grafik, png, f"{token}.png", warnings)
+            else:
+                _embed_image(files, order, png, f"{token}.png", prov, thn, bln,
+                             token, f"Grafik {SINGKATAN[ind]} {jenis}", warnings,
+                             nama_paket=f"{token}.png")
         else:
             kosong.append(f"{SINGKATAN[ind]} {jenis}")
         if 0 < n < 6:
@@ -868,10 +1012,24 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
             "Grafik hanya punya sedikit bulan data sehingga garisnya pendek: "
             + ", ".join(tipis) + ". Data bulanan di all_data belum lengkap.")
     if qr_bytes:
-        _embed_image(files, order, qr_bytes, qr_name, prov, thn, bln, "qrcode", "QR code", warnings)
+        if QR_FRAME:
+            _embed_image_ke_frame(files, order, QR_FRAME, qr_bytes,
+                                  qr_name or "qrcode.png", warnings)
+        else:
+            _embed_image(files, order, qr_bytes, qr_name, prov, thn, bln, "qrcode", "QR code", warnings)
     if infografis_bytes:
-        _embed_image(files, order, infografis_bytes, infografis_name, prov, thn, bln,
-                     "Infografis", "Infografis", warnings)
+        if INFOGRAFIS_FRAME:
+            _embed_image_ke_frame(files, order, INFOGRAFIS_FRAME, infografis_bytes,
+                                  infografis_name or "Infografis.jpg", warnings)
+        else:
+            _embed_image(files, order, infografis_bytes, infografis_name, prov, thn, bln,
+                         "Infografis", "Infografis", warnings)
+    if narasi_ai:
+        warnings.append("Narasi diambil dari pariwisata_ai_narratives (sama seperti halaman web) "
+                        "pada story: " + ", ".join(sorted(narasi_ai)) + ".")
+    elif ai_narasi is not None:
+        warnings.append("Narasi AI tidak ditemukan untuk periode ini â€” IDML memakai kalimat "
+                        "gaya BPS bawaan.")
     warnings.append("Setelah dibuka di InDesign, cek teks overset (tanda + merah) dan perataan "
                     "halaman; panjang narasi berbeda dari template.")
     _link_images_relative(files, order, resolve_template(level).parent, warnings)
