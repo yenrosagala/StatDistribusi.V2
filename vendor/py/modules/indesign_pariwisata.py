@@ -797,6 +797,65 @@ def _pilih_profil(stories, warnings=None):
     return None
 
 
+def _tambah_paragraf_narasi(root, psr, teks, warnings, sid, tertulis=None,
+                             gaya="ParagraphStyle/$ID/NormalParagraphStyle"):
+    """Tempelkan ``teks`` sebagai paragraf BARU setelah paragraf ``psr``.
+
+    Dipakai slot glosarium yang menggabungkan definisi statis dengan narasi periode:
+    definisinya dibiarkan utuh, narasinya pindah ke paragraf sendiri supaya
+    enak dibaca dan sama dengan halaman web.
+    """
+    from lxml import etree as ET
+
+    story = root.find("Story") if root is not None else None
+    if story is None or psr is None:
+        warnings.append(f"{sid}: <Story> atau paragraf tidak ditemukan - narasi dilewati.")
+        return
+    # Sisakan hanya definisi statis. Teks periode lama bisa berada di dua tempat:
+    # di segmen <CharacterStyleRange> berikutnya, atau setelah <Br/> di segmen pertama.
+    csrs = psr.findall("CharacterStyleRange")
+    for csr in csrs[1:]:
+        psr.remove(csr)
+    if csrs:
+        pertama = csrs[0]
+        potong = False
+        for anak_ in list(pertama):
+            if potong:
+                pertama.remove(anak_)
+            elif anak_.tag == "Br":
+                pertama.remove(anak_)
+                potong = True
+        # kalau <Br/> ternyata bersarang di dalam <Content>, buang dari situ
+        if not potong:
+            for br in list(pertama.iter("Br")):
+                induk = br.getparent()
+                if induk is None:
+                    continue
+                setelah = False
+                for anak_ in list(induk):
+                    if setelah:
+                        induk.remove(anak_)
+                    elif anak_ is br:
+                        induk.remove(br)
+                        setelah = True
+                if setelah:
+                    break
+    baru = ET.Element("ParagraphStyleRange", {"AppliedParagraphStyle": gaya})
+    csr = ET.SubElement(baru, "CharacterStyleRange",
+                        {"AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]"})
+    isi = ET.SubElement(csr, "Content")
+    isi.text = " " + str(teks)
+    anak = list(story)
+    posisi = len(anak)
+    for i, child in enumerate(anak):
+        if child is psr:
+            posisi = i + 1
+            break
+    story.insert(posisi, baru)
+    if tertulis is not None:
+        tertulis.add(sid)
+
+
 def _paragraf_narasi(teks):
     """Pecah narasi AI jadi paragraf siap cetak.
 
@@ -951,13 +1010,16 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
     if root is not None and blok:
         paragraf = _paragraf_narasi((ai_narasi or {}).get(("Hotel Bintang", "tpk")))
         if paragraf:
-            kalimat = paragraf[0]
+            # Narasi AI: paragraf sendiri, definisi glosarium tetap utuh.
             narasi_ai.add(GLOSARIUM_TPK)
+            _tambah_paragraf_narasi(root, _psr_akar(root), paragraf[0], warnings,
+                                    GLOSARIUM_TPK, tertulis=tertulis)
         else:
             kalimat = kalimat_bln_ini(blok["rows"], "Hotel Bintang", "tpk", prov, bln, thn,
                                       prev_bln, prev_thn, total=total_blok(blok))
-        _tulis_setelah_jangkar(
-            _psr_akar(root), "TPK Hotel Bintang", kalimat, warnings, GLOSARIUM_TPK, tertulis=tertulis)
+            _tulis_setelah_jangkar(
+                _psr_akar(root), "TPK Hotel Bintang", kalimat, warnings, GLOSARIUM_TPK,
+                tertulis=tertulis)
 
     # 8) Cakupan slot — jangan diamkan. Setiap story yang memuat angka gaya BPS
     #    (dua desimal) WAJIB sudah tertulisi; kalau ada yang tidak, story itu
