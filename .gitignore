@@ -28,3 +28,8 @@ backup/*
 
 # generated summary PDFs
 Ringkasan_*.pdf
+
+# InDesign sources (.indd) and preview PDFs are working files, not build inputs:
+# the exporters only read the .idml plus Document fonts/ and Links/.
+templates/*/*.indd
+templates/*/*.pdf
