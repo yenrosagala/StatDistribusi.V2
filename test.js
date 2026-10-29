@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aggByProvinsi, computeStats, fallbackNarrative, formatIdNumber, growthRows,
+  aggByProvinsi, arahDinamis, computeStats, fallbackNarrative, formatIdNumber, growthRows,
   isFlagged, pctChange, prevPeriod, reportTable, sortPeriods, yoySeries,
 } from './lib.js';
 import {
-  fallbackTransportNarrative, normalisasiEntitas, normalizeNarrative, transportReport,
+  bannedNarrativeTerms, fallbackTransportNarrative, isPublishableNarrative,
+  normalisasiEntitas, normalizeNarrative, transportReport,
 } from './lib-transport.js';
 import { cleanNumber, computeUploadStats, parseTransportFile } from './etl-transport.js';
 import { toNumber } from './etl-pariwisata.js';
@@ -425,4 +426,34 @@ test('toNumber tells Indonesian and plain decimals apart', () => {
   // starCount drives whether the footnote is shown, so it counts ROWS with at
   // least one starred cell, not the number of starred cells.
   assert.equal(t.starCount, 2);
+});test('cached narratives that break the BRS style are rejected', () => {
+  // The dashboard used to publish texts written by an older, looser prompt:
+  // "27.741 individu", "menandakan penurunan", "faktor musiman".
+  assert.equal(isPublishableNarrative('Jumlah penumpang mencapai 27.741 individu.'), false);
+  assert.equal(isPublishableNarrative('Angka ini menandakan penurunan.'), false);
+  assert.equal(isPublishableNarrative('Penurunan tajam sebesar 5,2 persen.'), false);
+  assert.equal(isPublishableNarrative('Naik secara signifikan.'), false);
+  assert.equal(isPublishableNarrative(''), false);
+  assert.equal(isPublishableNarrative(null), false);
+  // A well-formed BRS sentence still passes.
+  assert.equal(
+    isPublishableNarrative('Jumlah penumpang angkutan udara yang datang pada September 2026 sebanyak 43.764 orang atau turun 2,93 persen dibandingkan Agustus 2026.'),
+    true,
+  );
+  assert.deepEqual(bannedNarrativeTerms('melonjak dan signifikan'), ['melonjak', 'signifikan']);
+});
+
+test('arahDinamis stays neutral and the magnitude has no sign', () => {
+  // "melonjak"/"tajam" are forbidden, and printing a signed number after the
+  // direction word produced "menurun sebesar -8,90 persen".
+  assert.equal(arahDinamis(15), 'meningkat');
+  assert.equal(arahDinamis(-15), 'menurun');
+  assert.equal(arahDinamis(0), 'relatif stabil');
+  const paras = fallbackNarrative('Transportasi Laut', 'September', 2026, 'Agustus', 2026,
+    { curr: 59156, prev: 64934, mtm: -8.9, yoy: -3.2, cumCurr: 651515 },
+    { curr: 594749.1, prev: 619407.8, mtm: -3.98, cumCurr: 5000000 }, 'ton');
+  const text = paras.join(' ');
+  assert.ok(!/sebesar\s*-/.test(text), 'no signed magnitude after the direction word');
+  assert.ok(!/melonjak|tajam|signifikan/i.test(text), 'no forbidden wording');
+  assert.ok(text.includes('menurun sebesar 8,90 persen'), 'magnitude printed unsigned');
 });

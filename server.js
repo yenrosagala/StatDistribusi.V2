@@ -18,7 +18,7 @@ import {
   reportTable, sortPeriods, uniqueSorted, yoySeries,
 } from './lib.js';
 import {
-  fallbackTransportNarrative, normalizeNarrative, transportReport,
+  bannedNarrativeTerms, fallbackTransportNarrative, isPublishableNarrative, normalizeNarrative, transportReport,
 } from './lib-transport.js';
 import {
   ADMIN_TABLES, buildSeriesQuery, deleteFiltered, deleteRows, distinctYears, entityOptions,
@@ -352,8 +352,16 @@ async function buildSection(moda, selected, prev) {
   const penumpang = computeStats(aggCurr, aggPrev, aggCumCurr, aggCumPrev, moda.colsP);
   const barang = computeStats(aggCurr, aggPrev, aggCumCurr, aggCumPrev, moda.colsB);
 
+  // A cached narrative written by an older, looser prompt can contain words the
+  // BRS style forbids ("melonjak", "signifikan") or invented causes. Drop it and
+  // use the deterministic text instead of publishing it.
   const cached = await narrative(`dashboard_${moda.table}`, `${selected.bln}|${selected.thn}`);
-  const paras = cached
+  const cachedOk = isPublishableNarrative(cached);
+  if (cached && !cachedOk) {
+    console.warn(`[dashboard] narasi cache ${moda.table} ${selected.bln} ${selected.thn} `
+      + `ditolak (${bannedNarrativeTerms(cached).join(', ')}); memakai teks deterministik.`);
+  }
+  const paras = cachedOk
     ? cached.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
     : fallbackNarrative(moda.title, selected.bln, selected.thn, prev.bln, prev.thn, penumpang, barang, moda.satuan);
 
@@ -441,7 +449,10 @@ async function loadTransportReport(url, periods, selected, session = { role: 'ad
         col, label, rowCol, moda: target.moda, prov: province,
         year, monthName, prevYear: prev.thn, prevMonthName: prev.bln,
       });
-      const cachedText = cached.get(`report_${target.moda}_${label}`);
+      const rawCached = cached.get(`report_${target.moda}_${label}`);
+      // Same guard as the dashboard: a stale text that breaks the style rules
+      // must not reach the report, the Excel export or the IDML.
+      const cachedText = isPublishableNarrative(rawCached) ? rawCached : null;
       const paras = cachedText
         ? normalizeNarrative(cachedText, col).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
         : normalizeNarrative(fallbackTransportNarrative({

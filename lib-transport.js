@@ -273,6 +273,35 @@ function toFloatId(tok) {
   return Number(tok);
 }
 
+// Words the BRS style forbids, plus the dashboard-era jargon that slipped into
+// cached narratives ("individu", "baseline", "menandakan"). A cached text that
+// trips any of these was produced by an older, looser prompt and is rejected by
+// isPublishableNarrative() so the caller falls back to the deterministic text.
+export const BANNED_NARRATIVE_TERMS = [
+  'melonjak', 'anjlok', 'drastis', 'tajam', 'signifikan', 'komprehensif',
+  'mendalam', 'kontras', 'fundamental', 'krusial', 'kerangka', 'dinamika',
+  'menandakan', 'mengisyaratkan', 'bukan hanya', '—',
+  // dashboard-era jargon that never belongs in a BRS sentence
+  'individu', 'baseline', 'pasen', 'defisiensi', 'logistik melampaui',
+];
+
+/** Terms from BANNED_NARRATIVE_TERMS present in `text` (lowercased match). */
+export function bannedNarrativeTerms(text) {
+  if (!text) return [];
+  const lower = String(text).toLowerCase();
+  return BANNED_NARRATIVE_TERMS.filter((w) => lower.includes(w.toLowerCase()));
+}
+
+/**
+ * True when a cached narrative may be shown. Rejecting here rather than only at
+ * write time also cleans up texts that are already in the database, which is
+ * what the dashboard used to display.
+ */
+export function isPublishableNarrative(text) {
+  if (!text || !String(text).trim()) return false;
+  return bannedNarrativeTerms(text).length === 0;
+}
+
 export function normalizeNarrative(text, colTarget) {
   if (!text) return text;
   const meta = NARRATIVE_META[colTarget] || { satuan: 'ton' };

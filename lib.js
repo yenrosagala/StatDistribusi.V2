@@ -45,13 +45,15 @@ export function formatIdNumber(value, decimals = 2) {
   return NF.get(decimals).format(v);
 }
 
+// BRS forbids loaded wording: "melonjak" and "tajam" may not describe a change,
+// and the magnitude is already carried by the number that follows, so one
+// neutral verb per direction is enough. The +-0.05 band matches the prompt's
+// "relatif stabil" rule.
 export function arahDinamis(pct) {
   if (pct == null || !Number.isFinite(pct)) return 'tercatat';
-  if (pct >= 10) return 'mengalami lonjakan';
-  if (pct > 0) return 'meningkat';
-  if (pct <= -10) return 'mengalami penurunan tajam';
-  if (pct < 0) return 'menurun';
-  return 'stabil';
+  if (pct > 0.05) return 'meningkat';
+  if (pct < -0.05) return 'menurun';
+  return 'relatif stabil';
 }
 
 export function sortPeriods(rows) {
@@ -331,13 +333,16 @@ export function fallbackNarrative(moda, bln, thn, prevBln, prevThn, penumpang, b
   const f0 = (v) => formatIdNumber(v, 0);
   const f2 = (v) => formatIdNumber(v, 2);
   const fp = (v) => formatIdNumber(v ?? 0, 2);
+  // The direction word already says naik/turun, so the magnitude is printed
+  // without its sign: "menurun sebesar 8,90 persen", never "-8,90".
+  const fabs = (v) => formatIdNumber(Math.abs(v ?? 0), 2);
   const p1 = `Total pergerakan penumpang angkutan ${moda.toLowerCase()} dalam negeri pada bulan ${bln} ${thn} `
     + `mencapai ${f0(penumpang.curr)} orang, ${arahDinamis(penumpang.mtm)} sebesar `
-    + `${fp(penumpang.mtm)} persen dibandingkan ${prevBln} ${prevThn} (${f0(penumpang.prev)} orang). `
-    + `Volume barang turut ${arahDinamis(barang.mtm)} sebesar ${fp(barang.mtm)} persen, `
+    + `${fabs(penumpang.mtm)} persen dibandingkan ${prevBln} ${prevThn} (${f0(penumpang.prev)} orang). `
+    + `Volume barang turut ${arahDinamis(barang.mtm)} sebesar ${fabs(barang.mtm)} persen, `
     + `dari ${f2(barang.prev)} ${satuan} menjadi ${f2(barang.curr)} ${satuan}.`;
   const p2 = `Secara kumulatif periode Januari-${bln} ${thn}, total penumpang mencapai ${f0(penumpang.cumCurr)} orang, `
-    + `${arahDinamis(penumpang.yoy)} ${fp(penumpang.yoy)} persen dibandingkan periode yang sama tahun lalu. `
+    + `${arahDinamis(penumpang.yoy)} ${fabs(penumpang.yoy)} persen dibandingkan periode yang sama tahun lalu. `
     + `Total barang kumulatif mencapai ${f2(barang.cumCurr)} ${satuan}.`;
   return [p1, p2];
 }
