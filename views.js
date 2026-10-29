@@ -1389,6 +1389,8 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
   }, fmt(entry.table.total.dLast))}</td></tr></tfoot>
 </table></div>`;
     const canvasId = `yoy-${ind.key}-${entry.jenis.replace(/\s+/g, '-')}`;
+    const namaGrafik = `${(ind.short || ind.key).toUpperCase()}-${entry.jenis}-${report.province}-${report.month}-${report.year}.png`
+      .replace(/\s+/g, '-');
     configs.push({
       id: canvasId,
       series: entry.series || { labels: [], prev: [], cur: [], prevYear: '', year: '' },
@@ -1399,7 +1401,7 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
       monthIndex: Number(report.month) - 1,
     });
     return `<section class="dashboard-card report-card">
-  <div class="card-header"><h3>Indicator: ${escapeHtml(ind.key.toUpperCase())} — ${escapeHtml(entry.jenis)}</h3></div>
+  <div class="card-header"><h3>Indicator: ${escapeHtml(ind.key.toUpperCase())} — ${escapeHtml(entry.jenis)}</h3><button type="button" class="btn btn-ghost" style="width:auto;font-size:12px;padding:6px 10px" onclick="window.unduhGrafik('${canvasId}', '${escapeHtml(namaGrafik)}')">&#128229; Unduh Grafik (PNG)</button></div>
   ${showNarrativePw ? narrativeBox({ ...entry, prov: report.province, tahun: report.year, bulan: report.month, indikator: ind.key }, isAdmin) : ''}
   ${table}
   <div class="chart-frame" style="height:340px"><canvas id="${canvasId}"></canvas></div>
@@ -1426,7 +1428,7 @@ function pariwisataExportCard(report) {
       <label>Tanggal Rilis <input name="tanggal" placeholder="mis. 1 Oktober 2026"></label>
     </div>
     <div class="metric-row">
-      <a class="btn btn-secondary" href="/export/pariwisata/xlsx?provinsi=${encodeURIComponent(report.province)}&tahun=${report.year}&bulan=${encodeURIComponent(bulan)}">📊 Unduh Excel (Hanya Tabel)</a>
+      <a class="btn btn-secondary" href="/export/pariwisata/xlsx?provinsi=${encodeURIComponent(report.province)}&tahun=${report.year}&bulan=${encodeURIComponent(bulan)}">📊 Unduh Excel (Tabel + Grafik)</a>
       <button class="btn btn-primary" id="pariwisata-idml-submit" type="button" onclick="event.preventDefault(); document.getElementById('pariwisata-idml-form').submit(); return false;">🎨 Unduh Paket InDesign (.zip)</button>
     </div>
   </form>
@@ -1442,6 +1444,28 @@ function reportScript(configs) {
   var monthLabelPlugin = ${monthLabelPlugin.toString()};
   var CFG = ${json};
   var nf = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
+  window.unduhGrafik = function (canvasId, namaFile) {
+    var asli = document.getElementById(canvasId);
+    if (!asli) return;
+    var skala = 2;                       // 2x untuk cetak
+    var out = document.createElement('canvas');
+    out.width = asli.width * skala;
+    out.height = asli.height * skala;
+    var ctx = out.getContext('2d');
+    ctx.fillStyle = '#ffffff';           // canvas Chart.js transparan
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(asli, 0, 0, out.width, out.height);
+    out.toBlob(function (blob) {
+      if (!blob) return;
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = namaFile || (canvasId + '.png');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    }, 'image/png');
+  };
   CFG.forEach(function (c) {
     var el = document.getElementById(c.id);
     if (!el) return;
