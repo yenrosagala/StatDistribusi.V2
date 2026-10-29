@@ -1321,16 +1321,12 @@ function adminTabsScript() {
 // The (*) on a current-month cell means the estimate's relative standard error
 // exceeds 25 percent, so the figure is only indicative. lib.js already appends
 // the marker; without this footnote the star is unexplained on the page.
+// One fixed wording for the whole table, matching the BRS footnote: the marker
+// means RSE > 25%. The rule behind `starred` still also covers "Tidak dapat
+// rilis" (see isFlagged in lib.js), but this note is only the short indicator.
 function rseNote(table) {
   if (!table || !table.starCount) return '';
-  // Say which reason applies. A blanket "RSE above 25 percent" would be false
-  // for rows flagged "Tidak dapat rilis", which often carry RSE 0.
-  const reasons = new Set((table.body || []).filter((r) => r.starred).map((r) => r.starReason));
-  const parts = [];
-  if (reasons.has('rse')) parts.push('nilai memiliki RSE di atas 25 persen');
-  if (reasons.has('ket')) parts.push('nilai tidak dapat dirilis');
-  const why = parts.length ? parts.join(' atau ') : 'nilai tidak dapat dirilis';
-  return `<p class="table-note side-note">*) ${why[0].toUpperCase()}${why.slice(1)} sehingga hanya bersifat indikatif.</p>`;
+  return `<p class="table-note side-note">*) Nilai memiliki RSE &gt; 25 persen sehingga hanya bersifat indikatif.</p>`;
 }
 // Render a current-month value cell. A starred figure keeps its (*) but the
 // marker is set as a raised, coloured glyph so it reads as a marker in a dense

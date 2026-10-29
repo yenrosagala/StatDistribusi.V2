@@ -400,14 +400,15 @@ def build_xlsx_pariwisata(payload):
 
                 nama_sheet = f"{SINGKATAN[ind]} - {jenis}"[:31]
                 # (*) marks current-month values that are either statistically
-                # weak (RSE > 25%) or not releasable. The star is meaningless
-                # without a key, so the sheet says what it means.
+                # weak (RSE > 25%) or not releasable. The key names only the RSE
+                # rule, like the BRS footnote, so a star from "Tidak dapat rilis"
+                # is reported through PERINGATAN.txt instead (see
+                # _catat_legenda_bintang).
                 # Copy per sheet: `header` is built once above and is reused by
                 # every sheet, so mutating it in place would leak the key.
                 kolom_sheet = list(header)
                 if any(isinstance(baris[3], str) and baris[3].endswith("*") for baris in body):
-                    kolom_sheet[0] = ("Kelas Akomodasi (* = RSE di atas 25 persen "
-                                      "atau tidak dapat rilis)")
+                    kolom_sheet[0] = "Kelas Akomodasi (* = RSE di atas 25 persen)"
                 pd.DataFrame(body, columns=kolom_sheet).to_excel(
                     writer, sheet_name=nama_sheet, index=False,
                 )
