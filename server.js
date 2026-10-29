@@ -14,7 +14,7 @@ import {
 } from './views.js';
 import {
   INV_MONTH_MAP, MONTH_ABBR, PROVINSI_ORDER, aggByProvinsi, computeStats, fallbackNarrative, formatIdNumber,
-  MONTH_NAMES, growthRows, mean, monthNameEn, pctChange, periodLabel, periodsFromInfo, prevPeriod,
+  MONTH_NAMES, growthRows, mean, monthIndexOf, monthNameEn, pctChange, periodLabel, periodsFromInfo, prevPeriod,
   reportTable, sortPeriods, uniqueSorted, yoySeries,
 } from './lib.js';
 import {
@@ -495,7 +495,9 @@ async function loadMap(url, info) {
   const years = uniqueSorted(info.map((r) => r.year));
   const months = uniqueSorted(info.map((r) => r.month));
   const wantYear = Number(url.searchParams.get('tahun'));
-  const wantMonth = Number(url.searchParams.get('bulan'));
+  // The map <select> submits the English month name ("June"); accept that, the
+  // Indonesian name and the number alike (see monthIndexOf in lib.js).
+  const wantMonth = monthIndexOf(url.searchParams.get('bulan'));
   // month_list is global in Streamlit (months 9-12 only exist for 2025), so the
   // default must come from the latest (year, month) pair, not the column maxima.
   const pairs = [...new Set(info.map((r) => `${Number(r.year)}|${Number(r.month)}`))]
@@ -573,7 +575,10 @@ async function loadReport(url, info, session = { role: 'admin' }) {
 
   const wantProv = url.searchParams.get('provinsi');
   const wantYear = Number(url.searchParams.get('tahun'));
-  const wantMonth = Number(url.searchParams.get('bulan'));
+  // The report <select> submits a month *name* ("Juni"), while deep links and
+  // exports use the number. Number('Juni') is NaN, which used to fall through to
+  // the latest period and silently show the wrong month. Accept both forms.
+  const wantMonth = monthIndexOf(url.searchParams.get('bulan'));
   const province = provinces.includes(wantProv) ? wantProv : provinces[0];
   const year = years.includes(wantYear) ? wantYear : latest[0];
   const month = months.includes(wantMonth) ? wantMonth : latest[1];

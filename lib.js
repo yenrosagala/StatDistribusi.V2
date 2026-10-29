@@ -122,6 +122,24 @@ export function monthNameEn(month) {
   return MONTH_NAMES_EN[Number(month) - 1] || '';
 }
 
+// Normalise a month coming from a query string to 1-12. Accepts the number form
+// used by exports and deep links ("6"), the Indonesian name the report <select>
+// submits ("Juni"), and the English name the map <select> submits ("June").
+// Returns null when the value is none of these, so callers fall back explicitly
+// instead of silently treating a name as NaN and jumping to another period.
+export function monthIndexOf(value) {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const asNumber = Number(raw);
+  if (Number.isInteger(asNumber) && asNumber >= 1 && asNumber <= 12) return asNumber;
+  const id = MONTH_NAMES.findIndex((n) => n.toLowerCase() === raw.toLowerCase());
+  if (id !== -1) return id + 1;
+  const en = MONTH_NAMES_EN.findIndex((n) => n.toLowerCase() === raw.toLowerCase());
+  if (en !== -1) return en + 1;
+  return null;
+}
+
 export function mean(values) {
   const xs = values.filter((v) => v != null && v !== '').map(Number).filter(Number.isFinite);
   return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : null;
