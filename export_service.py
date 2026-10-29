@@ -36,6 +36,33 @@ MIME = {
 }
 
 
+def _module_snapshot():
+    """mtime modul yang dipakai sidecar, untuk mendeteksi kode lama di memori."""
+    import glob
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    files = [os.path.join(here, n) for n in
+             ("export_bridge.py", "gen_narrative.py", "gen_summary.py", "summary_pdf.py",
+              "pariwisata_prompt.py")]
+    files += glob.glob(os.path.join(here, "vendor", "py", "modules", "*.py"))
+    snap = {}
+    for path in files:
+        try:
+            snap[os.path.basename(path)] = os.path.getmtime(path)
+        except OSError:
+            pass
+    return snap
+
+
+LOADED_AT = _module_snapshot()
+
+
+def _stale_modules():
+    """Modul yang berubah di disk setelah sidecar ini dijalankan."""
+    now = _module_snapshot()
+    return sorted(n for n, m in now.items() if abs(m - LOADED_AT.get(n, -1)) > 0.001)
+
+
 def _log(msg):
     """Logging must never kill a request: if the parent's pipe is gone (orphaned
     process), writing to stderr raises BrokenPipeError."""
@@ -61,7 +88,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            return self._send_json(200, {"ok": True, "builders": sorted(export_bridge.BUILDERS)})
+            stale = _stale_modules()
+            return self._send_json(200, {
+                "ok": True,
+                "builders": sorted(export_bridge.BUILDERS),
+                "pid": os.getpid(),
+                "stale": stale,
+                "hint": ("Kode berubah di disk setelah sidecar dijalankan; "
+                         "restart export_service.py.") if stale else None,
+            })
         return self._send_json(404, {"error": "not found"})
 
     def do_POST(self):

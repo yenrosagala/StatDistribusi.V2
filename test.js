@@ -269,3 +269,12 @@ test('the export-less rekon role never sees the banner', () => {
   assert.ok(!html.includes('Ekspor dokumen nonaktif'));
   setExportAvailability({ ok: true, mode: 'service' });
 });
+
+test('a stale sidecar warns without pretending exports are dead', () => {
+  setExportAvailability({ ok: true, mode: 'service', warning: 'Sidecar berjalan dengan kode lama (x.py).' });
+  const html = landingPage({ user: { name: 'Admin', role: 'admin' } });
+  assert.ok(html.includes('Perhatian'), 'warning banner expected');
+  assert.ok(html.includes('kode lama'), 'must name the problem');
+  assert.ok(!html.includes('Ekspor dokumen nonaktif'), 'must not claim exports are off');
+  setExportAvailability({ ok: true, mode: 'service' });
+});

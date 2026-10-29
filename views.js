@@ -89,6 +89,9 @@ function chartScript(charts) {
 // Document export needs the Python bridge. server.js probes it at boot and
 // flips this flag so the UI can warn instead of failing on click.
 function exportReason(status) {
+  // Peringatan (mis. sidecar masih menjalankan kode lama) didahulukan: ekspornya
+  // jalan, tetapi hasilnya bisa berasal dari kode yang sudah diganti.
+  if (status.warning) return status.warning;
   if (status.mode === 'disabled') {
     return status.message || 'Ekspor dinonaktifkan lewat DISABLE_EXPORTS.';
   }
@@ -171,8 +174,8 @@ function layout({ title, body, user, section, scripts = '', crumbs = null }) {
   </aside>
   <main class="app-main">
 ${crumbsHtml(crumbs)}
-${exportStatus.ok || user.role === 'rekon' ? '' : `<div class="alert alert-warn export-alert">
-  <b>Ekspor dokumen nonaktif.</b> ${escapeHtml(exportReason(exportStatus))}
+${(exportStatus.ok && !exportStatus.warning) || user.role === 'rekon' ? '' : `<div class="alert alert-warn export-alert">
+  <b>${exportStatus.ok ? 'Perhatian' : 'Ekspor dokumen nonaktif'}.</b> ${escapeHtml(exportReason(exportStatus))}
   Jalankan <code>python export_service.py</code> di server ini, atau pastikan Python beserta
   dependensinya terpasang (<code>pip install -r requirements.txt</code>) agar tombol unduh
   PPTX/DOCX/IDML/XLSX berfungsi.

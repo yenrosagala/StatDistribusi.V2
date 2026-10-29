@@ -69,7 +69,8 @@ function bridgeError(err, args) {
 async function serviceHealth(timeoutMs = HEALTH_TIMEOUT_MS) {
   try {
     const res = await fetch(`${SERVICE_URL}/health`, { signal: AbortSignal.timeout(timeoutMs) });
-    return res.ok;
+    if (!res.ok) return false;
+    return await res.json().catch(() => ({}));   // detail: pid, stale, hint
   } catch {
     return false;
   }
@@ -157,11 +158,23 @@ export async function checkExporter() {
   const ttl = cached && cached.ok
     ? Number(process.env.EXPORT_STATUS_TTL_MS || 300_000)
     : 15_000;
-  const fresh = cached && Date.now() - cached.checkedAt < ttl;
+  // Hasil "stale" tidak boleh di-cache: begitu sidecar di-restart, status harus
+  // langsung bersih tanpa menunggu TTL 5 menit.
+  const basi = Boolean(cached && cached.stale && cached.stale.length);
+  const fresh = cached && !basi && Date.now() - cached.checkedAt < ttl;
   if (fresh) return cached;
 
-  if (await serviceHealth()) {
-    cached = { ok: true, mode: 'service', service: SERVICE_URL, build: BUILD, checkedAt: Date.now() };
+  const health = await serviceHealth();
+  if (health) {
+    cached = {
+      ok: true, mode: 'service', service: SERVICE_URL, build: BUILD,
+      svcBuild: health.pid, stale: health.stale || [], checkedAt: Date.now(),
+    };
+    if (cached.stale.length) {
+      cached.warning = `Sidecar berjalan dengan kode lama (${cached.stale.join(', ')}). `
+        + 'Restart export_service.py.';
+      console.warn(`[export] ${cached.warning}`);
+    }
     return cached;
   }
   try {
