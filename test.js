@@ -456,4 +456,11 @@ test('arahDinamis stays neutral and the magnitude has no sign', () => {
   assert.ok(!/sebesar\s*-/.test(text), 'no signed magnitude after the direction word');
   assert.ok(!/melonjak|tajam|signifikan/i.test(text), 'no forbidden wording');
   assert.ok(text.includes('menurun sebesar 8,90 persen'), 'magnitude printed unsigned');
+});test('the pariwisata prompt spells the class level in words, not digits', () => {
+  // Requested: "bintang 1" must be written "bintang satu" in the narrative.
+  const prompt = readFileSync(new URL('./pariwisata_prompt.py', import.meta.url), 'utf8');
+  assert.ok(prompt.includes('Angka tingkat kelas selalu ditulis dengan huruf'),
+    'rule must be present');
+  assert.ok(prompt.includes('hotel bintang satu'), 'gives the word form as an example');
+  assert.ok(prompt.includes('Jangan menulis'), 'names the forbidden digit form');
 });
