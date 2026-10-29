@@ -4,7 +4,7 @@ export const MONTH_MAP = Object.fromEntries(MONTH_NAMES.map((n, i) => [n, i + 1]
 export const INV_MONTH_MAP = Object.fromEntries(MONTH_NAMES.map((n, i) => [i + 1, n]));
 export const MONTH_ABBR = {
   Januari: 'Jan', Februari: 'Feb', Maret: 'Mar', April: 'Apr', Mei: 'Mei', Juni: 'Jun',
-  Juli: 'Jul', Agustus: 'Agt', September: 'Sep', Oktober: 'Okt', November: 'Nov', Desember: 'Des',
+  Juli: 'Jul', Agustus: 'Ags', September: 'Sep', Oktober: 'Okt', November: 'Nov', Desember: 'Des',
 };
 export const MONTH_NAMES_EN = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];

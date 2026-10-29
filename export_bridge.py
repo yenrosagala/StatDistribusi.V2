@@ -132,6 +132,30 @@ def build_pptx(payload):
     return buf.getvalue()
 
 
+BATAS_NARASI_IDML = 420   # karakter per paragraf di dalam frame .idml
+
+
+def _ringkas_untuk_idml(teks, batas=BATAS_NARASI_IDML):
+    """Ambil kalimat utuh sepanjang batas; kalimat pertama selalu ikut.
+
+    Template BRS punya frame teks dengan tinggi tetap, sedangkan narasi gaya BRS
+    bisa tiga kalimat panjang per paragraf. Memotong di batas kalimat membuat
+    isinya tetap utuh secara bahasa dan tidak memotong angka di tengah.
+    """
+    import re
+
+    teks = " ".join(str(teks or "").split())
+    if not teks:
+        return ""
+    kalimat = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\u201c\"])", teks)
+    keluaran = kalimat[0]
+    for s in kalimat[1:]:
+        if len(keluaran) + 1 + len(s) > batas:
+            break
+        keluaran += " " + s
+    return keluaran
+
+
 def _narasi_tersimpan(item):
     """Narasi AI yang juga tampil di halaman web, dipecah jadi dua paragraf."""
     import re
@@ -149,7 +173,8 @@ def _narasi_tersimpan(item):
     paras = [p.strip() for p in re.split(r"\n\s*\n", str(teks).replace("**", "")) if p.strip()]
     if not paras:
         return None
-    return paras[0], " ".join(paras[1:])
+    return (_ringkas_untuk_idml(paras[0]),
+            _ringkas_untuk_idml(" ".join(paras[1:])))
 
 
 def _report_items(prov, thn, bln):
@@ -483,7 +508,8 @@ def build_idml_pariwisata(payload):
         raise SystemExit(f"Tidak ada data pariwisata untuk {prov} {bln} {thn}.")
     # Narasi AI yang juga tampil di halaman web, supaya IDML tidak memakai teks
     # gaya BPS yang berbeda dari laporan web.
-    ai_narasi = _narasi_ai_pariwisata(get_engine(), prov, thn, bln)
+    ai_narasi = {k: "\n\n".join(_ringkas_untuk_idml(p) for p in v.split("\n\n"))
+                 for k, v in _narasi_ai_pariwisata(get_engine(), prov, thn, bln).items()}
     result = fill_brs_pariwisata_template(
         None, prov, thn, bln, data, level=prov, ai_narasi=ai_narasi,
         nomor_brs=(payload.get("nomor") or "").strip() or None,

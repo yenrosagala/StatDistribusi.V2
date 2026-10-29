@@ -421,6 +421,15 @@ def parse_two_paragraphs(text):
     return None, None
 
 
+# Prompt narasi bergaya BRS (port dari brs-style-prompts.js; teks identik).
+TRANSPORTASI_PROMPT = "Anda adalah penulis Berita Resmi Statistik (BRS) Badan Pusat Statistik. Pembaca adalah\njurnalis, pelaku usaha, dan pegawai pemerintah non-teknis. Tirulah gaya narasi BRS BPS:\nbahasa Indonesia baku, datar, dan objektif; sudut pandang orang ketiga; tanpa sapaan,\ntanpa opini, tanpa tafsir sebab-akibat, tanpa rekomendasi.\n\nTUGAS\nTulis narasi indikator \"{label}\" pada moda {moda} untuk Provinsi {prov}, periode\n{bln} {thn} dibandingkan {prev_bln} {prev_thn}.\n\nMEMBACA TABEL\n- Kolom berurutan: bulan lalu, bulan ini, M-to-M (%), kumulatif tahun lalu,\n  kumulatif tahun ini, Y-on-Y (%). Kolom kumulatif adalah Januari sampai {bln}.\n- Baris \"Total\", \"TOTAL\", \"Total Keseluruhan\", atau \"Jumlah\" adalah angka keseluruhan.\n  Baris \"Subtotal\", \"Jumlah\" di tengah tabel, baris pemisah (\"Bandara Lainnya\",\n  \"Pelabuhan lainnya\"), dan baris kosong bukan entitas. Jangan disebut sebagai bandara\n  atau pelabuhan, dan jangan masuk peringkat.\n- \"Undefined\" berarti dasar perbandingan nol. Tulis \"tidak dapat dibandingkan karena\n  tidak tercatat pada {prev_bln} {prev_thn}\" untuk entitas itu, jangan menulis persen.\n\nRANGKA PARAGRAF 1 (bulan ini dibanding bulan lalu)\na. Kalimat pembuka, pola BRS:\n   \"Jumlah [subjek] pada {bln} {thn} sebanyak/mencapai [angka Total] [satuan] atau\n   naik/turun [M-to-M Total] persen dibandingkan {prev_bln} {prev_thn}.\"\n   Subjek mengikuti label: Penumpang Datang atau Penumpang Turun = \"penumpang angkutan\n   {moda_kecil} yang datang\"; Penumpang Berangkat atau Penumpang Naik = \"penumpang\n   angkutan {moda_kecil} yang berangkat\"; Barang Bongkar = \"barang yang dibongkar\";\n   Barang Muat = \"barang yang dimuat\".\nb. Kalimat kelompok arah, pola BRS:\n   \"Peningkatan jumlah [subjek] terjadi di [Bandara/Pelabuhan] A sebesar x persen,\n   B sebesar y persen, dan C sebesar z persen. Sebaliknya, penurunan terjadi di D\n   sebesar p persen dan E sebesar q persen.\"\n   Maksimal 5 entitas per arah. Mulai dari arah yang menjadi arah Total.\n   Entitas yang relatif stabil disebut terpisah: \"Sementara jumlah ... di [X] relatif\n   stabil.\"\nc. Kalimat peringkat, pola BRS (hitung persentase kontribusi = nilai entitas / nilai\n   baris keseluruhan x 100, 2 desimal):\n   \"Jumlah [subjek] terbesar terdapat pada [X], yaitu mencapai [angka] [satuan] atau\n   sebesar [P] persen dari total, diikuti [Y] sebanyak [angka] [satuan] atau sebesar\n   [Q] persen dari total.\"\n   Hanya entitas bernama; baris subtotal dan \"lainnya\" tidak ikut peringkat.\n\nRANGKA PARAGRAF 2 (kumulatif Januari sampai {bln} {thn})\na. Kalimat pembuka, pola BRS:\n   \"Selama Januari–{bln} {thn}, jumlah [subjek] sebanyak [kumulatif tahun ini Total]\n   [satuan] atau naik/turun [Y-on-Y Total] persen jika dibandingkan dengan periode\n   yang sama tahun sebelumnya sebanyak [kumulatif tahun lalu Total] [satuan].\"\nb. Kalimat kelompok arah dengan pola dan batas yang sama seperti paragraf 1, memakai\n   kolom Y-on-Y. Bila semua entitas searah, pakai pola aturan 6.\nc. Kalimat peringkat kumulatif dengan pola yang sama, memakai kolom kumulatif tahun ini,\n   persentase terhadap baris keseluruhan kumulatif.\nd. Bila bulan laporan adalah Januari, kumulatif sama dengan bulan ini. Tulis paragraf 2\n   hanya dari kolom kumulatif tahun lalu dan Y-on-Y, tanpa kata \"Selama Januari–\".\ne. Berhenti di fakta terakhir. Tidak ada kalimat makna atau kesimpulan.\n\nATURAN GAYA BRS (WAJIB)\n1. Setiap kalimat memuat fakta dari tabel. Tidak ada kalimat yang hanya menegaskan\n   pentingnya temuan. Satu kalimat boleh panjang, tetapi hanya membawa satu gagasan.\n2. Tulis \"persen\", bukan tanda %. Selisih angka persentase ditulis \"persen poin\".\n3. Format angka Indonesia: titik untuk ribuan, koma untuk desimal (1.234,56).\n   Persen dan persen poin selalu 2 desimal. Salin angka dari tabel, jangan membulatkan\n   dan jangan mengubah satuan (jangan ubah \"orang\" menjadi \"juta orang\").\n4. Arah perubahan ditentukan angka, bukan selera. Pakai kata baku: naik, turun, meningkat,\n   menurun, stabil. Nilai di antara -0,05 dan +0,05 ditulis \"relatif stabil\".\n   Dilarang: melonjak, anjlok, drastis, tajam, signifikan, komprehensif, mendalam, kontras,\n   fundamental, krusial, kerangka, dinamika, menandakan, mengisyaratkan,\n   \"bukan hanya ... tetapi juga\", tanda pisah panjang (em dash), dan daftar tiga hal\n   yang dipaksakan. Tanda pisah pendek hanya untuk rentang periode (Januari–Agustus 2026).\n5. Daftar entitas memakai pola BRS: \"A sebesar x persen, B sebesar y persen, dan C sebesar\n   z persen\". Urutkan dari nilai terbesar ke terkecil. Pakai \"masing-masing\" bila dua\n   entitas atau lebih berbagi satu kalimat, \"diikuti\" untuk peringkat berikutnya, dan\n   \"Sebaliknya,\" atau \"Sementara itu,\" untuk membalik arah.\n6. Bila semua entitas bergerak searah, nyatakan itu dengan satu kalimat (\"terjadi di semua\n   ... yang diamati\") lalu sebut yang tertinggi saja. Jangan mengulang daftar.\n7. Singkatan ditulis lengkap sekali pada pemakaian pertama, selanjutnya singkatannya saja.\n8. Jangan menambah angka, penyebab, atau pembanding yang tidak ada di tabel. Satu-satunya\n   angka turunan yang diperbolehkan adalah persentase kontribusi (lihat bagian modul).\n   Hitung dengan teliti dari angka tabel.\n9. Keluaran: teks polos, tepat 2 paragraf, dipisahkan satu baris kosong. Tanpa judul,\n    tanpa markdown, tanpa butir, tanpa pengantar, tanpa catatan kaki, tanpa penutup.\n\nSumber Data Tabel:\n{data_str}"
+
+
+def _fill_prompt(template, values):
+    """Ganti {nama} sekali jalan; placeholder tak dikenal dibiarkan."""
+    return re.sub(r"\{([a-z_]+)\}", lambda m: str(values.get(m.group(1), m.group(0))), template)
+
+
 def generate_single_narrative_ai(df_flat, label, prov, moda, bln, thn, prev_bln, prev_thn,
                                 force=False):
     report_type = f"report_{moda}_{label}"
@@ -435,46 +444,11 @@ def generate_single_narrative_ai(df_flat, label, prov, moda, bln, thn, prev_bln,
 
     data_str = df_flat.to_string(index=False)
 
-    prompt = (
-        "Anda adalah penulis ringkasan statistik resmi BPS. Sasaran pembaca adalah masyarakat umum,\n"
-        "yaitu jurnalis, pelaku usaha, dan pegawai pemerintah non-teknis, bukan pembaca laporan teknis.\n"
-        "Tulis dengan bahasa Indonesia formal, tenang, dan objektif; tanpa gaya populer, tanpa sapaan,\n"
-        "tanpa opini.\n\n"
-        f"Tugas: ringkasan hasil statistik indikator \"{label}\" pada moda {moda} untuk Provinsi {prov},\n"
-        f"periode {bln} {thn} dibandingkan {prev_bln} {prev_thn}. Tepat 2 paragraf,\n"
-        "dipisahkan satu baris kosong.\n\n"
-        "Paragraf 1: apa yang terjadi bulan ini.\n"
-        "- Mulai dengan satu kalimat kesimpulan: naik, turun, atau stabil, beserta angkanya.\n"
-        "- Selalu tuliskan angka sebelum dan sesudah, bukan hanya selisihnya.\n"
-        "- Sebutkan pelabuhan atau bandara yang paling menonjol dan yang paling lemah, tanpa istilah teknis.\n\n"
-        "Paragraf 2: bagaimana dibanding tahun lalu, dan apa artinya.\n"
-        "- Bandingkan dengan bulan yang sama tahun lalu, dengan angka yang sama jelasnya.\n"
-        "- Tutup dengan satu kalimat makna praktis yang netral, tanpa menyimpulkan sebab-akibat\n"
-        "  (contoh: \"Angka yang lebih tinggi berarti lebih banyak penumpang atau barang pada September\n"
-        "  dibandingkan Agustus\"). Jangan memberi rekomendasi kebijakan.\n\n"
-        "Aturan bahasa (wajib):\n"
-        "- Kalimat maksimal 25 kata. Satu gagasan per kalimat. Hindari anak kalimat berganda.\n"
-        "- Setiap kalimat harus memuat angka atau fakta dari tabel. Hapus kalimat yang hanya\n"
-        "  menegaskan pentingnya temuan.\n"
-        "- Jangan gunakan istilah berikut; pakai padanannya:\n"
-        "  \"hierarki BRS\" -> \"rincian menurut pelabuhan/bandara\";\n"
-        "  \"kontribusi agregat\" -> \"gambaran keseluruhan\";\n"
-        "  \"deviasi pertumbuhan\" -> \"selisih\";\n"
-        "  \"signifikansi fluktuasi antarwilayah\" -> \"perbedaan antarwilayah\";\n"
-        "  \"MTM\" -> \"dibanding bulan sebelumnya\";\n"
-        "  \"YTD\" -> \"sejak awal tahun\";\n"
-        "  \"YoY\" -> \"dibanding bulan yang sama tahun lalu\";\n"
-        "  \"poin persentase\" -> \"poin\" (tetap sebutkan angka sebelum dan sesudah).\n"
-        "- Dilarang memakai: \"bukan hanya ... tetapi juga\", menandakan, mengisyaratkan, signifikan,\n"
-        "  komprehensif, mendalam, kontras, fundamental, krusial, kerangka, dinamika, tanda pisah\n"
-        "  panjang, dan daftar tiga hal yang dipaksakan.\n"
-        "- Sebutkan singkatan sekali lengkap pada pemakaian pertama.\n"
-        "- Gunakan format angka Indonesia: titik untuk ribuan, koma untuk desimal.\n"
-        "- Jangan menambah angka, sebab-akibat, atau rekomendasi yang tidak ada di tabel.\n"
-        "- Jangan sertakan judul, pengantar, catatan kaki, atau penutup.\n\n"
-        "Sumber Data Tabel:\n"
-        f"{data_str}"
-    )
+    prompt = _fill_prompt(TRANSPORTASI_PROMPT, {
+        "data_str": data_str, "label": label, "prov": prov, "moda": moda,
+        "moda_kecil": "udara" if "Udara" in str(moda) else "laut",
+        "bln": bln, "thn": thn, "prev_bln": prev_bln, "prev_thn": prev_thn,
+    })
 
     text_clean, source = generate_text(prompt, temperature=0.2)
     if text_clean:

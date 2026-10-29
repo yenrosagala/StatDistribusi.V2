@@ -973,8 +973,15 @@ def fill_brs_template(template_bytes, prov, thn, bln, items, kab_lookup,
             parts = (_clean_narr(it.get(k)) for k in ((p,) if isinstance(p, str) else p))
             texts.append(" ".join(t for t in parts if t))
         if any(not t for t in texts):
-            warnings.append(f"{slot_id}: ada narasi kosong — slot dilewati.")
+            warnings.append(f"{slot_id}: ada narasi kosong - slot dilewati.")
             continue
+        total_karakter = sum(len(t) for t in texts)
+        if total_karakter > 1100:
+            warnings.append(
+                f"{slot_id}: {len(texts)} narasi digabung dalam satu paragraf "
+                f"({total_karakter} karakter) - cek overset di InDesign, "
+                f"pertimbangkan memendekkan paragraf."
+            )
         set_segments(psrs[psr_idx], texts, warnings, slot_id)
 
     # 4) poin utama (Pointer Utama) & ringkasan cover
