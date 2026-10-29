@@ -59,6 +59,11 @@ a { color: inherit; text-decoration: none; }
 .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); }
 .data-table tr:hover td { background: var(--surface-2); }
 .table-note { margin: 8px 0 0; }
+/* RSE marker: raised and coloured so it reads as a marker, not a typo. */
+.rse-star {
+  color: #b45309; font-weight: 700; font-size: .78em;
+  line-height: 0; vertical-align: super; margin-left: 1px; cursor: help;
+}
 .pos { color: var(--positive); font-weight: 700; }
 .neg { color: var(--negative); font-weight: 700; }
 

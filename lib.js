@@ -215,6 +215,9 @@ export function reportTable(rows, opts) {
       last: fmt2(r.last),
       prev: fmt2(r.prev),
       current: r.starred ? `${fmt2(r.current)}*` : fmt2(r.current),
+      // Kept separately from `current` so the view can render the marker itself
+      // while `current` stays plain text for the workbook and the tests.
+      starred: r.starred,
       kelas: r.kelas,
       dPrev: fmtDelta(r.changePrev),
       changePrev: r.changePrev,

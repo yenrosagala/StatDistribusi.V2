@@ -1325,6 +1325,14 @@ function rseNote(table) {
   if (!table || !table.starCount) return '';
   return `<p class="table-note side-note">*) Nilai bulan ini memiliki RSE di atas 25 persen sehingga hanya bersifat indikatif.</p>`;
 }
+// Render a current-month value cell. A starred figure keeps its (*) but the
+// marker is set as a raised, coloured glyph so it reads as a marker in a dense
+// column of numbers instead of looking like a stray character.
+function rseCell(value, starred) {
+  const text = value === undefined || value === null || value === 'undefined' ? '-' : String(value);
+  if (!starred) return `<td>${escapeHtml(text)}</td>`;
+  return `<td>${escapeHtml(text.replace(/\*$/, ''))}<sup class="rse-star" title="RSE di atas 25 persen">&lowast;</sup></td>`;
+}
 function valueGrid(series, colors = {}) {
   const months = series.labels.map((label, i) => ({ label, i }))
     .filter(({ i }) => series.prev[i] != null || series.cur[i] != null);
@@ -1373,7 +1381,7 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
     const fmt = (v) => (v === undefined || v === null || v === 'undefined') ? '-' : v;
     const table = `<div class="table-scroll"><table class="data-table">
   <thead><tr><th>Kelas Akomodasi</th><th>${escapeHtml(entry.table.columns.last)}</th><th>${escapeHtml(entry.table.columns.prev)}</th><th>${escapeHtml(entry.table.columns.cur)}</th><th>${escapeHtml(entry.table.columns.dPrev)}</th><th>${escapeHtml(entry.table.columns.dLast)}</th></tr></thead>
-  <tbody>${entry.table.body.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${fmt(r.last)}</td><td>${fmt(r.prev)}</td><td>${fmt(r.current)}</td><td>${growthCellButton({
+  <tbody>${entry.table.body.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${fmt(r.last)}</td><td>${fmt(r.prev)}</td>${rseCell(r.current, r.starred)}<td>${growthCellButton({
     dataset: 'all_data', provinsi: report.province, entity: '', jenis: entry.jenis,
     kelas: r.kelas, indicator: ind.key, year: report.year, month: Number(report.month),
     comparison: 'dprev', growth_value: r.changePrev,
