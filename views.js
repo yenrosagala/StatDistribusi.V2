@@ -130,8 +130,12 @@ function crumbsHtml(crumbs) {
 
 function layout({ title, body, user, section, scripts = '', crumbs = null }) {
   const adminHref = `${section === 'transportasi' ? '/transportasi' : '/pariwisata'}?tab=admin`;
+  // heroActions menerima section baru tanpa perlu tahu detailnya.
+
   const nav = [
     `<a class="side-link${section === 'home' ? ' active' : ''}" href="/">${icon('home')} Beranda</a>`,
+    // Perdagangan is read-only for every role, so it is always listed.
+    `<a class="side-link${section === 'perdagangan' ? ' active' : ''}" href="/perdagangan">${icon('building')} Perdagangan</a>`,
     // Report-only viewers still need a way to switch modules.
     ...(user.role === 'rekon' ? [
       `<a class="side-link${section === 'pariwisata' ? ' active' : ''}" href="/pariwisata?tab=report">${icon('building')} Pariwisata</a>`,
@@ -692,6 +696,128 @@ export function transportasiPage({ user, periods, selected, sections, tab = 'das
   });
 }
 
+/**
+ * Halaman modul Perdagangan Luar Negeri (ekspor-impor).
+ * Nilai dari server dalam US$; ditampilkan dalam Ribu US$ seperti tabel BPS.
+ */
+export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, tahun, bulan,
+  ringkasan, seri, hs2, negara, pelabuhan, periods }) {
+  const f2 = (v) => formatIdNumber(v ?? 0, 2);
+  const bulanName = MONTH_NAMES[bulan - 1] || '';
+  const params = `provinsi=${encodeURIComponent(province)}&tahun=${tahun}&bulan=${bulan}`;
+  const tabs = [
+    { label: 'Ringkasan', href: `/perdagangan?tab=ringkasan&${params}`, active: tab === 'ringkasan' },
+    { label: 'Rincian', href: `/perdagangan?tab=rincian&${params}`, active: tab === 'rincian' },
+  ];
+  const header = `<div class="section-hero">
+  <div>
+    <div class="section-title">Perdagangan Luar Negeri</div>
+    <div class="section-subtitle">Ekspor dan impor empat provinsi di Tanah Papua.</div>
+  </div>
+  ${heroActions(tabs, 'perdagangan', user)}</div>${tabNav(tabs)}`;
+
+  const kontrol = `<form method="get" action="/perdagangan" class="toolbar">
+  <input type="hidden" name="tab" value="${escapeHtml(tab)}">
+  <label class="field-inline"><span>Provinsi</span><select name="provinsi" onchange="this.form.submit()">
+    ${provinsi.map((p) => option(p, p, p === province)).join('')}
+  </select></label>
+  <label class="field-inline"><span>Tahun</span><select name="tahun" onchange="this.form.submit()">
+    ${[...new Set(periods.map((p) => p.tahun))].sort().map((y) => option(y, String(y), y === tahun)).join('')}
+  </select></label>
+  <label class="field-inline"><span>Bulan</span><select name="bulan" onchange="this.form.submit()">
+    ${periods.filter((p) => p.tahun === tahun).map((p) => option(p.bulan, MONTH_NAMES[p.bulan - 1], p.bulan === bulan)).join('')}
+  </select></label>
+  <noscript><button class="btn btn-primary" type="submit">Tampilkan</button></noscript>
+</form>`;
+
+  if (!ringkasan) {
+    return layout({
+      title: 'Perdagangan Luar Negeri', user, section: 'perdagangan',
+      crumbs: moduleCrumbs('Perdagangan', '/perdagangan', tab),
+      body: `${header}${kontrol}<section class="dashboard-card">
+  <div class="alert alert-warn">Belum ada data perdagangan untuk ${escapeHtml(province)} ${escapeHtml(bulanName)} ${tahun}.</div>
+</section>`,
+    });
+  }
+
+  const kpi = (label, value, sub, tone = '') => `<div class="metric-card">
+  <span class="stat-label">${escapeHtml(label)}</span>
+  <span class="metric-value${tone ? ` ${tone}` : ''}">${escapeHtml(value)}</span>
+  <span class="side-note">${escapeHtml(sub)}</span>
+</div>`;
+
+  const neraca = (ringkasan.bulanIni.ekspor - ringkasan.bulanIni.impor) / 1000;
+  const neracaKum = (ringkasan.kumulatif.ekspor - ringkasan.kumulatif.impor) / 1000;
+  const metrik = `<div class="metric-grid">
+  ${kpi('Ekspor (Ribu US$)', f2(ringkasan.bulanIni.ekspor / 1000),
+    `Migas ${f2(ringkasan.bulanIni.eksporMigas / 1000)} · Nonmigas ${f2(ringkasan.bulanIni.eksporNonMigas / 1000)}`)}
+  ${kpi('Impor (Ribu US$)', f2(ringkasan.bulanIni.impor / 1000),
+    `Migas ${f2(ringkasan.bulanIni.imporMigas / 1000)} · Nonmigas ${f2(ringkasan.bulanIni.imporNonMigas / 1000)}`)}
+  ${kpi(`Neraca (${neraca >= 0 ? 'Surplus' : 'Defisit'})`, f2(neraca), 'Ekspor dikurangi impor',
+    neraca >= 0 ? 'pos' : 'neg')}
+  ${kpi(`Kumulatif Jan–${bulanName}`, f2(neracaKum),
+    `Ekspor ${f2(ringkasan.kumulatif.ekspor / 1000)} · Impor ${f2(ringkasan.kumulatif.impor / 1000)}`)}
+</div>`;
+
+  const grafik = `<section class="dashboard-card">
+  <h2>Perkembangan Bulanan ${escapeHtml(String(tahun))}</h2>
+  <div class="chart-frame" style="height:340px"><canvas id="pdg-seri"></canvas></div>
+  <p class="side-note">Ribu US$. Ekspor berbasis provinsi asal barang; impor berbasis KPPBC.
+    Neraca per provinsi adalah perkiraan.</p>
+</section>`;
+
+  const tabelPeran = (caption, rows, kolom) => {
+    if (!rows || !rows.length) {
+      return `<section class="dashboard-card"><h2>${escapeHtml(caption)}</h2>
+  <div class="alert alert-info">Tidak ada data.</div></section>`;
+    }
+    const total = rows.reduce((a, r) => a + (Number(r.nilai) || 0), 0);
+    const body = rows.map((r) => `<tr><td>${escapeHtml(r.label || r.nama || r.kode || '-')}</td>
+  <td>${f2(r.nilai)}</td><td>${f2(total ? (Number(r.nilai) / total) * 100 : 0)}</td></tr>`).join('');
+    return `<section class="dashboard-card">
+  <h2>${escapeHtml(caption)}</h2>
+  <div class="table-scroll"><table class="data-table">
+    <thead><tr><th>Uraian</th><th>${escapeHtml(kolom)}</th><th>% Peran</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table></div>
+</section>`;
+  };
+
+  const isi = tab === 'rincian'
+    ? tabelPeran('Golongan Barang Ekspor (HS 2 digit)', hs2?.ekspor, 'Nilai FOB')
+      + tabelPeran('Golongan Barang Impor (HS 2 digit)', hs2?.impor, 'Nilai CIF')
+      + tabelPeran('Negara Tujuan Utama', negara?.ekspor, 'Nilai FOB')
+      + tabelPeran('Negara Asal Utama', negara?.impor, 'Nilai CIF')
+      + tabelPeran('Pelabuhan Muat Utama', pelabuhan?.ekspor, 'Nilai FOB')
+      + tabelPeran('Pelabuhan Bongkar Utama', pelabuhan?.impor, 'Nilai CIF')
+    : metrik + grafik;
+
+  const body = `${header}${kontrol}${isi}`;
+  // chartScript expects {id, type, labels, datasets}.
+  const charts = tab === 'ringkasan'
+    ? [{
+        id: 'pdg-seri',
+        type: 'line',
+        title: `Ekspor, Impor, dan Neraca ${province} ${tahun} (Ribu US$)`,
+        labels: MONTH_NAMES,
+        datasets: [
+          { label: 'Ekspor', data: seri?.ekspor || [], color: '#0f766e' },
+          { label: 'Impor', data: seri?.impor || [], color: '#b45309' },
+          { label: 'Neraca', data: seri?.neraca || [], color: '#6366f1' },
+        ],
+      }]
+    : [];
+
+  return layout({
+    title: 'Perdagangan Luar Negeri',
+    body,
+    user,
+    section: 'perdagangan',
+    crumbs: moduleCrumbs('Perdagangan', '/perdagangan', tab),
+    scripts: charts.length ? chartScript(charts) : '',
+  });
+}
+
 export function pariwisataPage({ user, info, periods, tab = 'home', map = null, report = null, admin = null }) {
   const latest = periods.at(-1);
   const numberFmt = (v, unit = '') => (v == null || !Number.isFinite(Number(v))
@@ -760,6 +886,8 @@ export function pariwisataPage({ user, info, periods, tab = 'home', map = null, 
 /** Right-aligned admin shortcut in the section header (admins only). */
 function heroActions(tabs, moduleId, user) {
   if (user.role !== 'admin') return '';
+  // Hanya modul yang benar-benar punya tab admin yang menampilkan tautannya.
+  if (!['pariwisata', 'transportasi'].includes(moduleId)) return '';
   const onAdmin = tabs.some((t) => t.active && String(t.href).includes('tab=admin'));
   return `<div class="hero-actions">
     <a class="btn${onAdmin ? ' btn-primary' : ''}" href="/${moduleId}?tab=admin">🔐 Admin ETL</a>

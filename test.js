@@ -463,4 +463,67 @@ test('arahDinamis stays neutral and the magnitude has no sign', () => {
     'rule must be present');
   assert.ok(prompt.includes('hotel bintang satu'), 'gives the word form as an example');
   assert.ok(prompt.includes('Jangan menulis'), 'names the forbidden digit form');
+});// ---------------------------------------------------------------------------
+// Perdagangan (ekspor-impor)
+// ---------------------------------------------------------------------------
+import { readZip } from './zip-reader.js';
+import { importPeriod, num, readDbf, toEkspor, toImpor } from './dbf-perdagangan.js';
+import { parsePerdaganganZip } from './etl-perdagangan.js';
+
+test('readDbf parses a dBase III header and records', () => {
+  // Bangun DBF minimal: 1 field C(4) + 1 field N(10), 2 record.
+  const fields = [['KODE', 'C', 4], ['NILAI', 'N', 10]];
+  const rlen = 1 + 4 + 10;
+  const hlen = 32 + fields.length * 32 + 1;
+  const buf = Buffer.alloc(hlen + 2 * rlen, 0x20);
+  buf[0] = 0x03;
+  buf.writeUInt32LE(2, 4);
+  buf.writeUInt16LE(hlen, 8);
+  buf.writeUInt16LE(rlen, 10);
+  fields.forEach(([name, type, len], i) => {
+    const p = 32 + i * 32;
+    buf.write(name.padEnd(11, '\u0000'), p, 'ascii');
+    buf.write(type, p + 11, 'ascii');
+    buf[p + 16] = len;
+  });
+  buf[hlen - 1] = 0x0d;
+  // Tiap record diawali satu byte flag (0x20 = aktif), lalu field-field.
+  buf.write(' ABCD   123.45', hlen, 'latin1');
+  buf.write(' EFGH     0.00', hlen + rlen, 'latin1');
+  const { fields: f, rows } = readDbf(buf);
+  assert.equal(f.length, 2);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].KODE, 'ABCD');
+  assert.equal(num(rows[0].NILAI), 123.45);
+  assert.equal(num(''), 0);
+});
+
+test('importPeriod reads the B<MMYY> / N<MMYY> pair', () => {
+  // B0926 = netto (kg), N0926 = nilai (US$). Urutan ini diverifikasi terhadap
+  // berkas *_total.DBF; menukarnya membuat seluruh angka impor keliru.
+  const p = importPeriod(['TIPE', 'HS', 'B0926', 'N0926']);
+  assert.deepEqual({ bulan: p.bulan, tahun: p.tahun }, { bulan: 9, tahun: 2026 });
+  assert.equal(p.bCol, 'B0926');
+  assert.equal(p.nCol, 'N0926');
+  assert.throws(() => importPeriod(['TIPE', 'HS']), /B<MMYY>/);
+});
+
+test('toEkspor / toImpor map the DBF columns', () => {
+  const e = toEkspor({ YEAR: '2026', MTH: '09', KODE_HS: '44071100', HS2: '44', PROVORIG: '9471',
+    PEL_MUAT: 'IDJYP', PELABUHAN: '35563', NEGARA: '4411', NGRTUJUAN: 'US', KETERANGAN: 'NonMigas',
+    NETTO: '1000.5', FOB: '2000.25' }, 'Papua', 'PROVORIG');
+  assert.equal(e.hs8, '44071100');
+  assert.equal(e.hs2, '44');
+  assert.equal(e.migas, 'NonMigas');
+  assert.equal(e.fob, 2000.25);
+  const i = toImpor({ TIPE: 'M', JENIS: 'NM', HS: '40081900', K_NEGARA: '124', NEG_ASAL: 'MY',
+    K_PELB: '31434', PEL_BONG: 'IDCGK', KPPBC: '120900', NAMA_KPPBC: 'KPPBC BIAK',
+    B0926: '630', N0926: '152' }, 'Papua', 'KPPBC', { tahun: 2026, bulan: 9, bCol: 'B0926', nCol: 'N0926' });
+  assert.equal(i.netto, 630, 'B column is netto');
+  assert.equal(i.cif, 152, 'N column is value');
+  assert.equal(i.migas, 'NonMigas');
+});
+
+test('readZip rejects a buffer that is not a ZIP', () => {
+  assert.throws(() => readZip(Buffer.from('bukan zip')), /ZIP/);
 });

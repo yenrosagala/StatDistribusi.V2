@@ -10,7 +10,7 @@ import {
   transportNarratives, transportReportRows,
 } from './db.js';
 import {
-  errorPage, landingPage, loginPage, pariwisataPage, setExportAvailability, transportasiPage,
+  errorPage, landingPage, loginPage, pariwisataPage, perdaganganPage, setExportAvailability, transportasiPage,
 } from './views.js';
 import {
   INV_MONTH_MAP, MONTH_ABBR, PROVINSI_ORDER, aggByProvinsi, computeStats, fallbackNarrative, formatIdNumber,
@@ -27,6 +27,10 @@ import {
 import { PEMETAAN_WILAYAH, computeUploadStats, countExistingRows, detectFileMetadata, parseTransportFile, savePeriod } from './etl-transport.js';
 import Busboy from 'busboy';
 import { EXPORT_MIME, checkExporter, exportFileName, runExport } from './export.js';
+import {
+  PERDAGANGAN_PROVINSI, perdaganganHs2, perdaganganNegara, perdaganganPelabuhan,
+  perdaganganPeriods, perdaganganRingkasan, perdaganganSeri,
+} from './perdagangan.js';
 import { deleteStaged, getStaged, pruneStaged, putStaged, stagingStore } from './upload-store.js';
 import { cellKey, deleteNote, getNote, normaliseCell, noteKeysFor, saveNote } from './growth-notes.js';
 import { collectNotes, getCached, hashNotes, monthName, notePeriods, saveSummary } from './growth-summary.js';
@@ -872,7 +876,8 @@ const requestHandler = async (req, res) => {
     }
 
     // Keep the export banner honest: re-probe (cached ~15s) before rendering pages.
-    if (url.pathname === '/' || url.pathname === '/pariwisata' || url.pathname === '/transportasi') {
+    if (url.pathname === '/' || url.pathname === '/pariwisata' || url.pathname === '/transportasi'
+        || url.pathname === '/perdagangan') {
       try {
         setExportAvailability(await checkExporter());
       } catch { /* probe failure must never break rendering */ }
@@ -882,6 +887,36 @@ const requestHandler = async (req, res) => {
       return sendHtml(res, await buildLanding(session));
     }
     if (url.pathname === '/pariwisata') return sendHtml(res, await buildPariwisata(session, url));
+
+/** Halaman modul Perdagangan Luar Negeri. */
+async function buildPerdagangan(session, url) {
+  const tab = url.searchParams.get('tab') === 'rincian' ? 'rincian' : 'ringkasan';
+  const periods = await perdaganganPeriods();
+  const latest = periods.at(-1) || { tahun: new Date().getFullYear(), bulan: 1 };
+
+  const wantProv = url.searchParams.get('provinsi');
+  const province = PERDAGANGAN_PROVINSI.includes(wantProv) ? wantProv : PERDAGANGAN_PROVINSI[0];
+  const wantYear = Number(url.searchParams.get('tahun'));
+  const tahun = periods.some((p) => p.tahun === wantYear) ? wantYear : latest.tahun;
+  const monthsForYear = periods.filter((p) => p.tahun === tahun).map((p) => p.bulan);
+  const wantMonth = Number(url.searchParams.get('bulan'));
+  const bulan = monthsForYear.includes(wantMonth) ? wantMonth : monthsForYear.at(-1) || latest.bulan;
+
+  const [ringkasan, seri, hs2, negara, pelabuhan] = await Promise.all([
+    perdaganganRingkasan(province, tahun, bulan),
+    perdaganganSeri(province, tahun),
+    perdaganganHs2(province, tahun, bulan),
+    perdaganganNegara(province, tahun, bulan),
+    perdaganganPelabuhan(province, tahun, bulan),
+  ]);
+
+  return perdaganganPage({
+    user: session, tab, provinsi: PERDAGANGAN_PROVINSI, province,
+    tahun, bulan, ringkasan, seri, hs2, negara, pelabuhan, periods,
+  });
+}
+
+    if (url.pathname === '/perdagangan') return sendHtml(res, await buildPerdagangan(session, url));
     if (url.pathname === '/transportasi') return sendHtml(res, await buildTransportasi(session, url));
 
     if (url.pathname.startsWith('/transportasi/admin/')) {
