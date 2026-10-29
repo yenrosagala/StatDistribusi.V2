@@ -57,6 +57,43 @@ EXPORT_SERVICE_URL = https://your-export-service.example.com
 DISABLE_EXPORTS    = (leave unset)
 ```
 
+## Running the export sidecar (local / own server)
+
+Document export needs Python. Start the sidecar through the supervisor, not by
+hand:
+
+```powershell
+npm run export-supervisor
+```
+
+Why a supervisor and not `python export_service.py`:
+
+- **Stale code.** The sidecar loads `export_bridge.py` and the vendored
+  `modules/*.py` into memory at startup. After any edit, a running sidecar keeps
+  serving the OLD code; its `/health` reports `stale: [...]` but nothing acts on
+  it. The supervisor polls `/health` and restarts the sidecar automatically when
+  modules change on disk.
+- **Crash recovery.** If the sidecar dies, the supervisor restarts it with a
+  capped backoff instead of export silently falling back.
+- **Clear preflight.** If Python is missing or child processes are blocked
+  (`EPERM`), it prints what to do instead of a generic export failure.
+
+`npm run export-check` runs the same preflight once and exits — useful in a
+deploy script or a `pm2`/service wrapper:
+
+```text
+[supervisor] python siap (python)
+[supervisor] sidecar siap (pid 23120)
+```
+
+Point the app at a non-default port with `EXPORT_SERVICE_PORT` (default 8765) and
+`EXPORT_SERVICE_URL` (default `http://127.0.0.1:8765`). Interpreter selection is
+`PYTHON_BIN`, otherwise `python` on Windows and `python3` elsewhere.
+
+On Windows, run the supervisor from a normal terminal or a service wrapper —
+some sandboxes block child-process creation outright, which surfaces as
+`spawn EPERM`.
+
 ## Database objects added for serverless
 
 `upload_staging` — replaces the old in-memory upload map. Created lazily by

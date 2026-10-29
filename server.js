@@ -1420,10 +1420,24 @@ if (!ON_VERCEL) {
   });
 
   // Surface a broken export path at startup instead of on first click.
+  // Pass the whole status object, not `status.ok`: the banner needs mode/code/
+  // message to explain what is wrong, and a bare boolean threw that away.
   checkExporter().then((status) => {
-    setExportAvailability(status.ok);
-    if (status.ok) console.log(`[export] Python bridge siap (${status.python}).`);
-    else console.warn(`[export] Ekspor dokumen NONAKTIF: ${status.message}`);
+    setExportAvailability(status);
+    if (!status.ok) {
+      console.warn(`[export] Ekspor dokumen NONAKTIF: ${status.message}`);
+      return;
+    }
+    // Service mode has no `.python` field (that only exists on the spawn path),
+    // which used to log "siap (undefined)".
+    const how = status.mode === 'service'
+      ? `sidecar ${status.service} (pid ${status.svcBuild ?? '-'})`
+      : `bridge ${status.python}`;
+    console.log(`[export] Siap: ${how}`);
+    if (status.stale && status.stale.length) {
+      console.warn(`[export] PERINGATAN: sidecar memakai kode lama (${status.stale.join(', ')}). `
+        + 'Jalankan `node scripts/export-supervisor.mjs` agar restart otomatis.');
+    }
   });
 
   process.on('SIGINT', async () => {

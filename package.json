@@ -8,6 +8,8 @@
     "start": "node --env-file-if-exists=../.env server.js",
     "test": "node --test test.js",
     "export-service": "python export_service.py",
+    "export-supervisor": "node scripts/export-supervisor.mjs",
+    "export-check": "node scripts/export-supervisor.mjs --once",
     "templates": "node scripts/install-templates.mjs"
   },
   "engines": {

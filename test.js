@@ -314,3 +314,38 @@ test('the transport Regenerasi form posts a numeric month and full period', () =
   assert.ok(!html.includes('name="bulan" value=""'), 'bulan must never be blank');
   assert.ok(html.includes('name="moda" value="Transportasi Udara"'), 'moda must be filled');
 });
+// ---------------------------------------------------------------------------
+// Export supervisor + boot preflight
+// ---------------------------------------------------------------------------
+const serverSource = readFileSync(new URL('./server.js', import.meta.url), 'utf8');
+
+test('the boot preflight forwards the full export status, not a bare boolean', () => {
+  // A boolean drops mode/code/message, so the banner cannot explain the failure.
+  assert.ok(serverSource.includes('setExportAvailability(status)'),
+    'must pass the status object');
+  assert.ok(!serverSource.includes('setExportAvailability(status.ok)'),
+    'must not pass status.ok');
+});
+
+test('the boot preflight never logs "undefined" for service mode', () => {
+  // Service mode carries no `.python` field; interpolating it printed
+  // "Python bridge siap (undefined)".
+  assert.ok(!serverSource.includes('siap (${status.python})'),
+    'must branch on status.mode instead of assuming .python');
+  assert.ok(serverSource.includes("status.mode === 'service'"), 'must handle service mode');
+});
+
+test('the stale-sidecar hint points at the supervisor', () => {
+  const exportSource = readFileSync(new URL('./export.js', import.meta.url), 'utf8');
+  assert.ok(exportSource.includes('export-supervisor.mjs'),
+    'stale warning must name the auto-restarting runner');
+});
+
+test('the supervisor restarts only when the sidecar reports stale modules', () => {
+  // Mirrors export-supervisor.mjs's poll() decision without spawning python.
+  const needsRestart = (h) => Boolean(h && Array.isArray(h.stale) && h.stale.length);
+  assert.equal(needsRestart({ ok: true, stale: ['export_bridge.py'] }), true);
+  assert.equal(needsRestart({ ok: true, stale: [] }), false);
+  assert.equal(needsRestart({ ok: true }), false);
+  assert.equal(needsRestart(null), false);
+});

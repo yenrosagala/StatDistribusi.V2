@@ -172,7 +172,7 @@ export async function checkExporter() {
     };
     if (cached.stale.length) {
       cached.warning = `Sidecar berjalan dengan kode lama (${cached.stale.join(', ')}). `
-        + 'Restart export_service.py.';
+        + 'Jalankan `node scripts/export-supervisor.mjs` agar restart otomatis.';
       console.warn(`[export] ${cached.warning}`);
     }
     return cached;
