@@ -1318,6 +1318,13 @@ function adminTabsScript() {
 })();
 </script>`;
 }
+// The (*) on a current-month cell means the estimate's relative standard error
+// exceeds 25 percent, so the figure is only indicative. lib.js already appends
+// the marker; without this footnote the star is unexplained on the page.
+function rseNote(table) {
+  if (!table || !table.starCount) return '';
+  return `<p class="table-note side-note">*) Nilai bulan ini memiliki RSE di atas 25 persen sehingga hanya bersifat indikatif.</p>`;
+}
 function valueGrid(series, colors = {}) {
   const months = series.labels.map((label, i) => ({ label, i }))
     .filter(({ i }) => series.prev[i] != null || series.cur[i] != null);
@@ -1390,7 +1397,7 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
     comparison: 'dlast', growth_value: entry.table.total.changeLast,
     label: `Total - Δ vs tahun lalu (${entry.jenis}, ${report.month})`,
   }, fmt(entry.table.total.dLast))}</td></tr></tfoot>
-</table></div>`;
+</table></div>${rseNote(entry.table)}`;
     const canvasId = `yoy-${ind.key}-${entry.jenis.replace(/\s+/g, '-')}`;
     const namaGrafik = `${(ind.short || ind.key).toUpperCase()}-${entry.jenis}-${report.province}-${report.month}-${report.year}.png`
       .replace(/\s+/g, '-');

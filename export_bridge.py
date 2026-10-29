@@ -396,7 +396,14 @@ def build_xlsx_pariwisata(payload):
                 ])
 
                 nama_sheet = f"{SINGKATAN[ind]} - {jenis}"[:31]
-                pd.DataFrame(body, columns=header).to_excel(
+                # (*) marks current-month values with RSE above 25 percent. The
+                # star is meaningless without a key, so the sheet says what it means.
+                # Copy per sheet: `header` is built once above and is reused by
+                # every sheet, so mutating it in place would leak the key.
+                kolom_sheet = list(header)
+                if any(isinstance(baris[3], str) and baris[3].endswith("*") for baris in body):
+                    kolom_sheet[0] = "Kelas Akomodasi (* = RSE di atas 25 persen)"
+                pd.DataFrame(body, columns=kolom_sheet).to_excel(
                     writer, sheet_name=nama_sheet, index=False,
                 )
 

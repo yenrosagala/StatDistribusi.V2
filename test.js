@@ -94,6 +94,7 @@ test('reportTable keeps every kelas, stars high RSE and lets Prov_Jenis win the 
   assert.equal(table.body[1].current, '30.00*');
   assert.equal(table.body[0].dPrev, '+4.00 pts');
   assert.equal(table.body[2].prev, '-');
+  assert.equal(table.starCount, 1);
   assert.equal(table.total.current, '41.50');
   assert.equal(table.total.dPrev, '+5.50 pts');
 });

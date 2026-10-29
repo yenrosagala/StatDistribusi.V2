@@ -200,6 +200,9 @@ export function reportTable(rows, opts) {
 
   return {
     hasData: body.length > 0,
+    // Number of kelas carrying the (*) marker. The report view uses it so the RSE
+    // footnote only appears on the cards where a star is actually shown.
+    starCount: body.filter((r) => r.starred).length,
     columns: {
       last: `${INV_MONTH_MAP[month]} ${lastYear}`,
       prev: `${INV_MONTH_MAP[prevMonth]} ${prevYear}`,
