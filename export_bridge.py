@@ -132,11 +132,37 @@ def build_pptx(payload):
     return buf.getvalue()
 
 
+def _narasi_tersimpan(item):
+    """Narasi AI yang juga tampil di halaman web, dipecah jadi dua paragraf."""
+    import re
+
+    from modules.report_page import get_db_narrative
+
+    report_type = f"report_{item['moda']}_{item['label']}"
+    period_key = f"{item['prov']}|{item['bln']}|{item['thn']}"
+    try:
+        teks = get_db_narrative(report_type, period_key)
+    except Exception:
+        return None
+    if not teks:
+        return None
+    paras = [p.strip() for p in re.split(r"\n\s*\n", str(teks).replace("**", "")) if p.strip()]
+    if not paras:
+        return None
+    return paras[0], " ".join(paras[1:])
+
+
 def _report_items(prov, thn, bln):
     from modules.report_page import collect_report_tables, generate_narrative_fallback, normalize_narrative
 
     items = collect_report_tables(prov, thn, bln)
     for item in items:
+        # Urutan sama dengan halaman web: narasi tersimpan dulu, generator statis
+        # hanya kalau periode ini belum punya narasi.
+        pasangan = _narasi_tersimpan(item)
+        if pasangan:
+            item["p1"], item["p2"] = pasangan
+            continue
         region_label = "Bandara" if item["moda"] == "Transportasi Udara" else "Pelabuhan/Kabupaten"
         p1, p2 = generate_narrative_fallback(
             report_flat=item["report_flat"], col_target=item["col_target"], moda=item["moda"],
