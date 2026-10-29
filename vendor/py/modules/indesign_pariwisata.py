@@ -381,11 +381,10 @@ def bintang_tabel(blok, ind):
 
     Urutannya sejajar dengan ``deret_tabel`` (satu per kelas, lalu baris Total).
     """
-    rse = blok.get("rse") or {}
-    keluar = []
-    for k in KELAS_TEMPLATE:
-        v = rse.get(k)
-        keluar.append(bool(pd.notna(v) and v > 0.25))
+    # ``rse`` sudah berupa hasil _tanda_bintang(): True bila RSE > 25% ATAU
+    # status rilis "Tidak dapat rilis".
+    tanda = blok.get("rse") or {}
+    keluar = [bool(tanda.get(k)) for k in KELAS_TEMPLATE]
     keluar.append(False)  # Total tidak pernah dibintang
     return keluar
 
@@ -415,6 +414,28 @@ def _baca_ref(engine, prov):
     }
 
 
+# "Tidak dapat rilis" means the figure may not be published as-is. It is an
+# independent signal from RSE: every row flagged in the VHTS workbook carries
+# RSE 0, so the two never coincide. Both reasons produce the same (*) marker.
+KET_TIDAK_RILIS = "tidak dapat rilis"
+BATAS_RSE = 0.25
+
+
+def _tanda_bintang(nilai, rse, ket):
+    """True bila sel bulan ini harus bertanda (*) demi RSE atau status rilis."""
+    try:
+        if nilai is None or pd.isna(nilai):
+            return False
+    except (TypeError, ValueError):
+        return False
+    try:
+        if rse is not None and not pd.isna(rse) and float(rse) > BATAS_RSE:
+            return True
+    except (TypeError, ValueError):
+        pass
+    return ket is not None and str(ket).strip().lower() == KET_TIDAK_RILIS
+
+
 def _baca_rse(engine, prov, thn, bln_m, tabel="all_data"):
     """RSE bulan berjalan per (jenis, kelas, indikator) untuk tanda (*).
 
@@ -423,7 +444,8 @@ def _baca_rse(engine, prov, thn, bln_m, tabel="all_data"):
     """
     try:
         df = pd.read_sql_query(
-            text(f"SELECT jenis_akomodasi, kelas_akomodasi, tpk_rse, rlmtgab_rse "
+            text(f"SELECT jenis_akomodasi, kelas_akomodasi, tpk, rlmtgab, "
+                 f"tpk_rse, rlmtgab_rse, tpk_ket, rlmtgab_ket "
                  f"FROM {tabel} "
                  f"WHERE TRIM(CAST(kd_prov AS TEXT)) = :prov "
                  f"AND year = :thn AND month = :bln"),
@@ -431,15 +453,16 @@ def _baca_rse(engine, prov, thn, bln_m, tabel="all_data"):
             params={"prov": str(prov).strip(), "thn": int(thn), "bln": bln_m},
         )
     except Exception:
-        logger.info("Kolom RSE belum tersedia di %s, tanda (*) dilewati", tabel)
+        logger.info("Kolom RSE/ket belum tersedia di %s, tanda (*) dilewati", tabel)
         return {}
     keluar = {}
     for r in df.itertuples():
         if pd.isna(r.kelas_akomodasi):
             continue
         k = int(r.kelas_akomodasi)
-        keluar[(r.jenis_akomodasi, k, "tpk")] = r.tpk_rse
-        keluar[(r.jenis_akomodasi, k, "rlmtgab")] = r.rlmtgab_rse
+        keluar[(r.jenis_akomodasi, k, "tpk")] = _tanda_bintang(r.tpk, r.tpk_rse, r.tpk_ket)
+        keluar[(r.jenis_akomodasi, k, "rlmtgab")] = _tanda_bintang(
+            r.rlmtgab, r.rlmtgab_rse, r.rlmtgab_ket)
     return keluar
 
 
@@ -700,6 +723,22 @@ def _isi_tabel(tbl, deret, bln, thn, prev_bln, prev_thn, ind, bintang=None):
                 teks += "*"
             _set_cell_text(cells[off + 1 + j], teks)
     return True
+
+
+# The template carries a fixed footnote: "Keterangan: (*) RSE > 25%". It predates
+# the release-status rule, so a figure starred because it is "Tidak dapat rilis"
+# would be mis-explained. Rewrite the legend to the rule actually applied.
+KETERANGAN_BINTANG = "Keterangan: (*) RSE > 25% atau tidak dapat rilis"
+
+
+def _perbarui_keterangan_bintang(root):
+    """Ganti teks legenda (*) bawaan template dengan aturan yang dipakai."""
+    if root is None:
+        return
+    for content in root.iter("Content"):
+        texts = content.text or ""
+        if "RSE" in texts and "*" in texts:
+            content.text = KETERANGAN_BINTANG
 
 
 def _tulis_setelah_jangkar(psr, anchor, teks_baru, warnings, sid, tertulis=None):
@@ -1005,6 +1044,7 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
         _tulis(_psr_akar(root, "Judul Tabel BRS"),
                [f"{SINGKATAN_PANJANG[ind]} {jenis} di {prov}, {bln} {thn}"],
                warnings, sid, tertulis=tertulis)
+        _perbarui_keterangan_bintang(root)
         if _isi_tabel(tbl, deret_tabel(blok, jenis), bln, thn, prev_bln, prev_thn, ind,
                       bintang=bintang_tabel(blok, ind)):
             terisi += 1

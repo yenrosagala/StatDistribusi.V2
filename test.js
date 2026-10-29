@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   aggByProvinsi, computeStats, fallbackNarrative, formatIdNumber, growthRows,
-  pctChange, prevPeriod, reportTable, sortPeriods, yoySeries,
+  isFlagged, pctChange, prevPeriod, reportTable, sortPeriods, yoySeries,
 } from './lib.js';
 import {
   fallbackTransportNarrative, normalisasiEntitas, normalizeNarrative, transportReport,
 } from './lib-transport.js';
 import { cleanNumber, computeUploadStats, parseTransportFile } from './etl-transport.js';
+import { toNumber } from './etl-pariwisata.js';
 import { exportFileName } from './export.js';
 
 test('prevPeriod rolls back over the year boundary', () => {
@@ -360,4 +361,44 @@ test('the pariwisata prompt uses hari/poin units, never "malam"', () => {
   assert.ok(prompt.includes('\\"hari\\"'), 'RLMT value unit must be hari');
   assert.ok(prompt.includes('selisih ditulis dalam \\"poin\\"'), 'RLMT delta unit must be poin');
   assert.ok(prompt.includes('[persen/hari]'), 'paragraph skeleton must offer persen/hari');
+});test('the (*) marker covers "Tidak dapat rilis" as well as high RSE', () => {
+  // The VHTS workbook carries tpk_ket / rlmtgab_ket. A "Tidak dapat rilis" figure
+  // must be starred even though every such row has RSE 0, so the rule is an OR.
+  assert.equal(isFlagged({ tpk: 63.2, tpk_rse: 0, tpk_ket: 'Tidak dapat rilis' }, 'tpk', 63.2), true);
+  assert.equal(isFlagged({ tpk: 18.3, tpk_rse: 0.76, tpk_ket: 'Dapat rilis' }, 'tpk', 18.3), true);
+  assert.equal(isFlagged({ tpk: 40, tpk_rse: 0.1, tpk_ket: 'Dapat rilis' }, 'tpk', 40), false);
+  // Near-miss wording must not be swept up.
+  assert.equal(isFlagged({ tpk_ket: 'Take all, dapat rilis' }, 'tpk', 40), false);
+  assert.equal(isFlagged({ tpk_ket: 'Dapat rilis dengan catatan' }, 'tpk', 40), false);
+  // Each indicator reads its own column.
+  assert.equal(isFlagged({ rlmtgab_ket: 'Tidak dapat rilis' }, 'rlmtgab', 1.7), true);
+  assert.equal(isFlagged({ tpk_ket: 'Tidak dapat rilis' }, 'rlmtgab', 1.7), false);
+});
+
+test('reportTable reports why a row is starred', () => {
+  const rows = [
+    { jenis_akomodasi: 'Hotel Bintang', kelas_akomodasi: 5, year: 2026, month: 9, tpk: 63.27, tpk_rse: 0, tpk_ket: 'Tidak dapat rilis' },
+    { jenis_akomodasi: 'Hotel Bintang', kelas_akomodasi: 2, year: 2026, month: 9, tpk: 20, tpk_rse: 0.9, tpk_ket: 'Dapat rilis' },
+    { jenis_akomodasi: 'Hotel Bintang', kelas_akomodasi: 1, year: 2026, month: 9, tpk: 9.14, tpk_rse: 0, tpk_ket: 'Dapat rilis' },
+  ];
+  const table = reportTable(rows, { jenis: 'Hotel Bintang', indicator: 'tpk', year: 2026, month: 9, prevYear: 2026, prevMonth: 8, lastYear: 2025, domain: [1, 2, 5] });
+  assert.equal(table.body.find((r) => r.kelas === 5).starReason, 'ket');
+  assert.equal(table.body.find((r) => r.kelas === 2).starReason, 'rse');
+  assert.equal(table.body.find((r) => r.kelas === 1).starReason, null);
+  assert.equal(table.starCount, 2);
+});
+
+test('toNumber tells Indonesian and plain decimals apart', () => {
+  // Regression: blindly stripping dots turned the raw cell "17.9977766075712"
+  // into 179977766075712, which would have corrupted every uploaded figure.
+  assert.equal(toNumber('17.9977766075712'), 17.9977766075712);
+  assert.equal(toNumber('-0.045'), -0.045);
+  assert.equal(toNumber('0.045'), 0.045);
+  assert.equal(toNumber('1.5'), 1.5);
+  assert.equal(toNumber('1.234,56'), 1234.56);
+  assert.equal(toNumber('2,5'), 2.5);
+  assert.equal(toNumber('10.000'), 10000);
+  assert.equal(toNumber('1.234.567,89'), 1234567.89);
+  assert.equal(toNumber(''), null);
+  assert.equal(toNumber('abc'), null);
 });

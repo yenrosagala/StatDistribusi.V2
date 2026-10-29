@@ -161,6 +161,39 @@ const round2 = (v) => Math.round(v * 100) / 100;
 const fmt2 = (v) => (v == null ? '-' : v.toFixed(2));
 const fmtDelta = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${v.toFixed(2)} pts`);
 
+// A current-month figure is marked (*) for EITHER of two independent reasons:
+//
+//   1. its relative standard error exceeds 25 percent, or
+//   2. the workbook's release-status column says it may not be released
+//      ("Tidak dapat rilis").
+//
+// The two signals do not overlap in practice -- every row flagged in the VHTS
+// workbook has RSE 0 -- so this is a disjunction, not a refinement. A single
+// helper keeps the web table, the Excel export, the IDML and the narrative
+// prompt from drifting apart.
+export const NOT_RELEASABLE = 'Tidak dapat rilis';
+export const RSE_LIMIT = 0.25;
+
+/** Text of `<indicator>_ket`, lowercased and trimmed, or null. */
+export function ketValue(row, indicator) {
+  if (!row) return null;
+  const raw = row[`${indicator}_ket`];
+  if (raw == null) return null;
+  const text = String(raw).trim();
+  return text === '' ? null : text;
+}
+
+/** True when `row` must carry the (*) marker for this indicator. */
+export function isFlagged(row, indicator, value) {
+  if (value == null || value === '') return false;
+  const rse = row ? Number(row[`${indicator}_rse`]) : NaN;
+  if (Number.isFinite(rse) && rse > RSE_LIMIT) return true;
+  const ket = ketValue(row, indicator);
+  // Exact match keeps "Take all, dapat rilis" and "Dapat rilis dengan catatan"
+  // from being swept up as not-releasable.
+  return ket != null && ket.toLowerCase() === NOT_RELEASABLE.toLowerCase();
+}
+
 // Port of pariwisata/ai.py generate_akomodasi_tables' table block: one row per
 // kelas (none dropped), a Total row that is the mean unless the uploaded
 // Prov_Jenis sheet has an official estimate, and RSE stars on this month only.
@@ -186,7 +219,8 @@ export function reportTable(rows, opts) {
     const cv = value(cur, k);
     const pv = value(prev, k);
     const lv = value(last, k);
-    const rse = cur.has(k) ? num(cur.get(k)[`${indicator}_rse`]) : null;
+    const curRow = cur.has(k) ? cur.get(k) : null;
+    const starred = isFlagged(curRow, indicator, cv);
     return {
       kelas: k,
       label: kelasLabel(jenis, k),
@@ -195,7 +229,12 @@ export function reportTable(rows, opts) {
       current: cv,
       changePrev: cv != null && pv != null ? round2(cv - pv) : null,
       changeLast: cv != null && lv != null ? round2(cv - lv) : null,
-      starred: rse != null && rse > 0.25 && cv != null,
+      starred,
+      // Why the row is starred, so the footnote can be specific instead of
+      // always claiming an RSE problem.
+      starReason: !starred
+        ? null
+        : (ketValue(curRow, indicator)?.toLowerCase() === NOT_RELEASABLE.toLowerCase() ? 'ket' : 'rse'),
     };
   });
 
@@ -236,6 +275,9 @@ export function reportTable(rows, opts) {
       // Kept separately from `current` so the view can render the marker itself
       // while `current` stays plain text for the workbook and the tests.
       starred: r.starred,
+      // 'ket' when the figure may not be released, 'rse' when it is only
+      // statistically weak; null when the row is not starred.
+      starReason: r.starReason,
       kelas: r.kelas,
       dPrev: fmtDelta(r.changePrev),
       changePrev: r.changePrev,

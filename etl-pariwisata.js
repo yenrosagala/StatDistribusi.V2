@@ -14,12 +14,31 @@ export const JENIS_MAP = { 1: 'Hotel Bintang', 2: 'Hotel Non Bintang' };
 const PROV_COLS = ['kd_prov', 'kd_provinsi', 'kode_prov', 'provinsi'];
 const BASE_COLS = ['mktj', 'mkts', 'mtgab', 'tpk', 'rlmtgab'];
 const NUM_COLS = ['mktj', 'mkts', 'mtgab', 'tpk', 'rlmtgab', 'tpk_rse', 'rlmtgab_rse', 'kelas_akomodasi'];
+// Release-status text columns. "Tidak dapat rilis" means the figure must not be
+// published as-is, so it gets the same (*) marker the RSE rule uses -- see
+// isFlagged() in lib.js. These are text, not numbers, so they are kept out of
+// NUM_COLS.
+const KET_COLS = ['tpk_ket', 'rlmtgab_ket'];
 const MAIN_COLS = ['kd_prov', 'kd_kab', 'jenis_akomodasi', 'kelas_akomodasi', 'mktj', 'mkts', 'mtgab',
-  'tpk', 'rlmtgab', 'tpk_rse', 'rlmtgab_rse', 'year', 'month'];
+  'tpk', 'rlmtgab', 'tpk_rse', 'rlmtgab_rse', 'tpk_ket', 'rlmtgab_ket', 'year', 'month'];
 
-function toNumber(v) {
+export function toNumber(v) {
   if (v === null || v === undefined || v === '') return null;
-  const n = Number(String(v).trim().replace(/\./g, '').replace(',', '.'));
+  const text = String(v).trim();
+  if (text === '') return null;
+  // The two number formats must be told apart, not guessed: blindly stripping
+  // dots turned the raw cell "17.9977766075712" into 179977766075712.
+  //   Indonesian  1.234.567,89 / 2,5 / 10.000  -> dot groups thousands, comma decimal
+  //   Plain       1234.56 / -0.045 / 10.5      -> dot is the decimal point
+  const hasComma = text.includes(',');
+  // A thousands group never begins with a bare 0 integer part: "0.045" is a
+  // fraction, while "10.000" groups. Hence the [1-9] on the leading digit.
+  const groups = /^[1-9]\d{0,2}(\.\d{3})+$/.test(text);   // 10.000 / 1.234.567
+  const indonesian = hasComma || groups;
+  const normalised = indonesian
+    ? text.replace(/\./g, '').replace(',', '.')
+    : text.replace(/,/g, '');
+  const n = Number(normalised);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -94,6 +113,7 @@ export function transformRows(rows, { year = null, month = null } = {}) {
       kelas_akomodasi: null,
       mktj: null, mkts: null, mtgab: null, tpk: null, rlmtgab: null,
       tpk_rse: null, rlmtgab_rse: null,
+      tpk_ket: null, rlmtgab_ket: null,
       year: Math.trunc(rowYear),
       month: Math.trunc(rowMonth),
     };
@@ -105,6 +125,12 @@ export function transformRows(rows, { year = null, month = null } = {}) {
         const n = toNumber(row[col]);
         record[col] = n === null ? 0 : n;
       }
+    }
+    for (const col of KET_COLS) {
+      const raw = row[col];
+      record[col] = raw === null || raw === undefined || String(raw).trim() === ''
+        ? null
+        : String(raw).trim();
     }
     out.push(record);
   }
@@ -159,8 +185,21 @@ export function parsePariwisataFile(buffer, { year = null, month = null } = {}) 
 
 const INSERT_MAIN = `INSERT INTO ${PARIWISATA_TABLE} (${MAIN_COLS.join(',')})
   VALUES (${MAIN_COLS.map((_, i) => `$${i + 1}`).join(',')})`;
-const INSERT_REF = `INSERT INTO ${PARIWISATA_REF_TABLE} (kd_prov,jenis_akomodasi,year,month,tpk,rlmtgab)
-  VALUES ($1,$2,$3,$4,$5,$6)`;
+const INSERT_REF = `INSERT INTO ${PARIWISATA_REF_TABLE} (kd_prov,jenis_akomodasi,year,month,tpk,rlmtgab,
+  tpk_ket,rlmtgab_ket)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`;
+
+// Idempotent schema upgrade: older databases predate the release-status columns.
+// Without this the INSERT below fails with "column tpk_ket does not exist".
+export async function ensurePariwisataColumns() {
+  const stmts = [];
+  for (const table of [PARIWISATA_TABLE, PARIWISATA_REF_TABLE]) {
+    for (const col of KET_COLS) {
+      stmts.push(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} text`);
+    }
+  }
+  for (const sql of stmts) await pool.query(sql);
+}
 
 export async function countExistingRows(year, month) {
   const r = await pool.query(
@@ -183,6 +222,10 @@ export async function savePariwisata(rows, refRows = []) {
   const refPeriods = [...new Set(refRows.map((r) => `${r.year}|${r.month}`))]
     .map((s) => s.split('|').map(Number));
 
+  // Migrate before the transaction: ALTER TABLE would otherwise hold a lock
+  // for the whole insert.
+  await ensurePariwisataColumns();
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -196,7 +239,8 @@ export async function savePariwisata(rows, refRows = []) {
       await client.query(INSERT_MAIN, MAIN_COLS.map((c) => r[c]));
     }
     for (const r of refRows) {
-      await client.query(INSERT_REF, [r.kd_prov, r.jenis_akomodasi, r.year, r.month, r.tpk, r.rlmtgab]);
+      await client.query(INSERT_REF, [r.kd_prov, r.jenis_akomodasi, r.year, r.month, r.tpk, r.rlmtgab,
+        r.tpk_ket, r.rlmtgab_ket]);
     }
     await client.query('COMMIT');
     return { inserted: rows.length, refInserted: refRows.length, periods: periods.length };
@@ -249,7 +293,8 @@ export async function periodRows(year, month = null) {
 
 /** TSV round-trip for the manual-correction textarea. */
 export const EDIT_COLUMNS = ['kd_prov', 'kd_kab', 'jenis_akomodasi', 'kelas_akomodasi',
-  'mktj', 'mkts', 'mtgab', 'tpk', 'rlmtgab', 'tpk_rse', 'rlmtgab_rse', 'year', 'month'];
+  'mktj', 'mkts', 'mtgab', 'tpk', 'rlmtgab', 'tpk_rse', 'rlmtgab_rse',
+  'tpk_ket', 'rlmtgab_ket', 'year', 'month'];
 
 export function rowsToTsv(rows) {
   const lines = [EDIT_COLUMNS.join('\t')];

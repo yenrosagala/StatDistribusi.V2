@@ -144,7 +144,7 @@ async function safeRows(sql, params, label) {
 export function reportRows(province, year) {
   return safeRows(
     `SELECT kd_prov, jenis_akomodasi, kelas_akomodasi, tpk, rlmtgab,
-            tpk_rse, rlmtgab_rse, year, month
+            tpk_rse, rlmtgab_rse, tpk_ket, rlmtgab_ket, year, month
      FROM all_data WHERE kd_prov = $1 AND year IN ($2, $3)`,
     [province, year, year - 1],
     'all_data',
@@ -162,7 +162,7 @@ export function reportDomain() {
 
 export function reportRef(province) {
   return safeRows(
-    'SELECT jenis_akomodasi, year, month, tpk, rlmtgab FROM pariwisata_ref_avg WHERE kd_prov = $1',
+    'SELECT jenis_akomodasi, year, month, tpk, rlmtgab, tpk_ket, rlmtgab_ket FROM pariwisata_ref_avg WHERE kd_prov = $1',
     [province],
     'pariwisata_ref_avg',
   );

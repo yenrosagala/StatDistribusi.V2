@@ -1323,15 +1323,29 @@ function adminTabsScript() {
 // the marker; without this footnote the star is unexplained on the page.
 function rseNote(table) {
   if (!table || !table.starCount) return '';
-  return `<p class="table-note side-note">*) Nilai bulan ini memiliki RSE di atas 25 persen sehingga hanya bersifat indikatif.</p>`;
+  // Say which reason applies. A blanket "RSE above 25 percent" would be false
+  // for rows flagged "Tidak dapat rilis", which often carry RSE 0.
+  const reasons = new Set((table.body || []).filter((r) => r.starred).map((r) => r.starReason));
+  const parts = [];
+  if (reasons.has('rse')) parts.push('nilai memiliki RSE di atas 25 persen');
+  if (reasons.has('ket')) parts.push('nilai tidak dapat dirilis');
+  const why = parts.length ? parts.join(' atau ') : 'nilai tidak dapat dirilis';
+  return `<p class="table-note side-note">*) ${why[0].toUpperCase()}${why.slice(1)} sehingga hanya bersifat indikatif.</p>`;
 }
 // Render a current-month value cell. A starred figure keeps its (*) but the
 // marker is set as a raised, coloured glyph so it reads as a marker in a dense
 // column of numbers instead of looking like a stray character.
-function rseCell(value, starred) {
+function starTitle(reason) {
+  if (reason === 'rse') return 'RSE di atas 25 persen';
+  if (reason === 'ket') return 'Tidak dapat rilis';
+  return 'Nilai tidak dapat dirilis atau RSE di atas 25 persen';
+}
+
+function rseCell(value, starred, reason) {
   const text = value === undefined || value === null || value === 'undefined' ? '-' : String(value);
   if (!starred) return `<td>${escapeHtml(text)}</td>`;
-  return `<td>${escapeHtml(text.replace(/\*$/, ''))}<sup class="rse-star" title="RSE di atas 25 persen">&lowast;</sup></td>`;
+  const title = starTitle(reason);
+  return `<td>${escapeHtml(text.replace(/\*$/, ''))}<sup class="rse-star" title="${escapeHtml(title)}">&lowast;</sup></td>`;
 }
 function valueGrid(series, colors = {}) {
   const months = series.labels.map((label, i) => ({ label, i }))
@@ -1381,7 +1395,7 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
     const fmt = (v) => (v === undefined || v === null || v === 'undefined') ? '-' : v;
     const table = `<div class="table-scroll"><table class="data-table">
   <thead><tr><th>Kelas Akomodasi</th><th>${escapeHtml(entry.table.columns.last)}</th><th>${escapeHtml(entry.table.columns.prev)}</th><th>${escapeHtml(entry.table.columns.cur)}</th><th>${escapeHtml(entry.table.columns.dPrev)}</th><th>${escapeHtml(entry.table.columns.dLast)}</th></tr></thead>
-  <tbody>${entry.table.body.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${fmt(r.last)}</td><td>${fmt(r.prev)}</td>${rseCell(r.current, r.starred)}<td>${growthCellButton({
+  <tbody>${entry.table.body.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${fmt(r.last)}</td><td>${fmt(r.prev)}</td>${rseCell(r.current, r.starred, r.starReason)}<td>${growthCellButton({
     dataset: 'all_data', provinsi: report.province, entity: '', jenis: entry.jenis,
     kelas: r.kelas, indicator: ind.key, year: report.year, month: Number(report.month),
     comparison: 'dprev', growth_value: r.changePrev,

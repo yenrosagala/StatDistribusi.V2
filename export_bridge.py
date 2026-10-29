@@ -368,14 +368,17 @@ def build_xlsx_pariwisata(payload):
                 blk = blok.get((ind, jenis))
                 if not blk:
                     continue
-                rse = blk.get("rse") or {}
+                # ``rse`` sudah memuat hasil gabungan RSE + status rilis
+                # (lihat _tanda_bintang di indesign_pariwisata.py), jadi jangan
+                # dibandingkan lagi dengan 0.25 di sini.
+                tanda = blk.get("rse") or {}
                 body = []
                 chart_labels = []
                 chart_values = ([], [])
 
                 for kelas, (ly, prev, cur) in sorted(blk["rows"].items()):
                     nilai = angka(cur)
-                    if nilai is not None and not pd.isna(rse.get(kelas)) and rse[kelas] > 0.25:
+                    if nilai is not None and bool(tanda.get(kelas)):
                         nilai = f"{nilai:.2f}*"
                     body.append([
                         f"{label_kelas(jenis)} {kelas}",
@@ -396,13 +399,15 @@ def build_xlsx_pariwisata(payload):
                 ])
 
                 nama_sheet = f"{SINGKATAN[ind]} - {jenis}"[:31]
-                # (*) marks current-month values with RSE above 25 percent. The
-                # star is meaningless without a key, so the sheet says what it means.
+                # (*) marks current-month values that are either statistically
+                # weak (RSE > 25%) or not releasable. The star is meaningless
+                # without a key, so the sheet says what it means.
                 # Copy per sheet: `header` is built once above and is reused by
                 # every sheet, so mutating it in place would leak the key.
                 kolom_sheet = list(header)
                 if any(isinstance(baris[3], str) and baris[3].endswith("*") for baris in body):
-                    kolom_sheet[0] = "Kelas Akomodasi (* = RSE di atas 25 persen)"
+                    kolom_sheet[0] = ("Kelas Akomodasi (* = RSE di atas 25 persen "
+                                      "atau tidak dapat rilis)")
                 pd.DataFrame(body, columns=kolom_sheet).to_excel(
                     writer, sheet_name=nama_sheet, index=False,
                 )
