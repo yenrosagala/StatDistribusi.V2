@@ -146,6 +146,8 @@ export async function runExport(kind, payload) {
 
 // Cached capability probe. Re-probes every 15s while unavailable so starting
 // the sidecar later is picked up without a server restart.
+const STARTED_AT = Date.now();
+const BUILD = process.env.APP_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || 'dev';
 let cached = null;
 export async function checkExporter() {
   if (EXPORTS_DISABLED) return { ok: false, mode: 'disabled', message: DISABLED_MESSAGE };
@@ -159,17 +161,21 @@ export async function checkExporter() {
   if (fresh) return cached;
 
   if (await serviceHealth()) {
-    cached = { ok: true, mode: 'service', service: SERVICE_URL, checkedAt: Date.now() };
+    cached = { ok: true, mode: 'service', service: SERVICE_URL, build: BUILD, checkedAt: Date.now() };
     return cached;
   }
   try {
     await runBridge(['--version']);
-    cached = { ok: true, mode: 'bridge', python: PYTHON, checkedAt: Date.now() };
+    cached = { ok: true, mode: 'bridge', python: PYTHON, build: BUILD, checkedAt: Date.now() };
   } catch (err) {
-    cached = {
+    const gagal = {
       ok: false, mode: 'none', service: SERVICE_URL, python: PYTHON, bridge: BRIDGE,
-      code: err.code || 'UNKNOWN', message: err.message, checkedAt: Date.now(),
+      code: err.code || 'UNKNOWN', message: err.message, build: BUILD, checkedAt: Date.now(),
     };
+    // Jangan cache kegagalan pada 30 detik pertama proses: sidecar butuh beberapa
+    // detik untuk siap, dan tanpa ini banner sempat muncul di kunjungan pertama.
+    cached = Date.now() - STARTED_AT < 30_000 ? null : gagal;
+    return gagal;
   }
   return cached;
 }

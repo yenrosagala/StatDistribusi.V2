@@ -233,3 +233,39 @@ test('exportFileName keeps province and period in every download name', () => {
   assert.equal(exportFileName('xlsx-pariwisata', payload), 'Tabel_Pariwisata_Papua_Selatan_September_2026.xlsx');
 });
 
+// ---------------------------------------------------------------------------
+// Export banner: it must never claim "EPERM" again, must explain the real reason,
+// and must stay hidden from roles that cannot export at all.
+// ---------------------------------------------------------------------------
+import { readFileSync } from 'node:fs';
+import { landingPage, setExportAvailability } from './views.js';
+
+const viewsSource = readFileSync(new URL('./views.js', import.meta.url), 'utf8');
+
+test('views.js no longer hard-codes the old EPERM banner sentence', () => {
+  assert.ok(!viewsSource.includes('Python bridge tidak dapat dijalankan di lingkungan ini'));
+  assert.ok(!viewsSource.includes('Jalankan ulang <code>node server.js</code>'));
+  assert.ok(viewsSource.includes('exportReason('), 'banner must render the reported reason');
+});
+
+test('no export banner is rendered when exports are healthy', () => {
+  setExportAvailability({ ok: true, mode: 'service' });
+  const html = landingPage({ user: { name: 'Admin', role: 'admin' } });
+  assert.ok(!html.includes('Ekspor dokumen nonaktif'));
+});
+
+test('an unavailable exporter renders the reported reason, not a guess', () => {
+  setExportAvailability({ ok: false, mode: 'none', code: 'ENOENT', message: 'python tidak ditemukan' });
+  const html = landingPage({ user: { name: 'Admin', role: 'admin' } });
+  assert.ok(html.includes('Ekspor dokumen nonaktif'), 'banner expected when exports are down');
+  assert.ok(html.includes('python tidak ditemukan'), 'must show the real reason');
+  assert.ok(!html.includes('EPERM'), 'must not invent EPERM');
+  assert.ok(html.includes('python export_service.py'), 'must tell the user how to fix it');
+});
+
+test('the export-less rekon role never sees the banner', () => {
+  setExportAvailability({ ok: false, mode: 'none', message: 'apa pun' });
+  const html = landingPage({ user: { name: 'Analis', role: 'rekon' } });
+  assert.ok(!html.includes('Ekspor dokumen nonaktif'));
+  setExportAvailability({ ok: true, mode: 'service' });
+});

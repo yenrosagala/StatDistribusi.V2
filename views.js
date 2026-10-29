@@ -171,7 +171,7 @@ function layout({ title, body, user, section, scripts = '', crumbs = null }) {
   </aside>
   <main class="app-main">
 ${crumbsHtml(crumbs)}
-${exportStatus.ok ? '' : `<div class="alert alert-warn export-alert">
+${exportStatus.ok || user.role === 'rekon' ? '' : `<div class="alert alert-warn export-alert">
   <b>Ekspor dokumen nonaktif.</b> ${escapeHtml(exportReason(exportStatus))}
   Jalankan <code>python export_service.py</code> di server ini, atau pastikan Python beserta
   dependensinya terpasang (<code>pip install -r requirements.txt</code>) agar tombol unduh
