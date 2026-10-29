@@ -725,14 +725,15 @@ def _isi_tabel(tbl, deret, bln, thn, prev_bln, prev_thn, ind, bintang=None):
     return True
 
 
-# The template carries a fixed footnote: "Keterangan: (*) RSE > 25%". It predates
-# the release-status rule, so a figure starred because it is "Tidak dapat rilis"
-# would be mis-explained. Rewrite the legend to the rule actually applied.
-KETERANGAN_BINTANG = "Keterangan: (*) RSE > 25% atau tidak dapat rilis"
+# BRS keeps the template's own footnote wording: it names only RSE > 25%. The
+# (*) marker in the table still follows the wider rule (RSE OR "Tidak dapat
+# rilis"); this constant exists so the legend is normalised to one exact string
+# instead of depending on whatever the template happens to spell.
+KETERANGAN_BINTANG = "Keterangan: (*) RSE > 25%"
 
 
 def _perbarui_keterangan_bintang(root):
-    """Ganti teks legenda (*) bawaan template dengan aturan yang dipakai."""
+    """Samakan teks legenda (*) dengan format BRS baku (RSE > 25%)."""
     if root is None:
         return
     for content in root.iter("Content"):

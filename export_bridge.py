@@ -522,6 +522,37 @@ MONTH_NUMBER = {
 }
 
 
+def _catat_legenda_bintang(data, result):
+    """Tambahkan peringatan bila ada (*) yang bukan karena RSE > 25%.
+
+    Legenda di template BRS berbunyi "Keterangan: (*) RSE > 25%" saja, sesuai
+    permintaan. Tetapi angka berstatus "Tidak dapat rilis" juga ditandai (*),
+    jadi kasus itu harus dilaporkan ke pengguna agar tidak salah tafsir.
+    """
+    try:
+        import pandas as pd
+        bukan_rse = []
+        for (ind, jenis), blok in (data or {}).items():
+            tanda = blok.get("rse") or {}
+            baris = blok.get("rows") or {}
+            for kelas, (_, _, cur) in baris.items():
+                if not tanda.get(kelas):
+                    continue
+                nilai_kosong = cur is None or (isinstance(cur, float) and pd.isna(cur))
+                if nilai_kosong:
+                    continue
+                # ditandai tetapi bukan karena RSE -> berasal dari status rilis
+                bukan_rse.append(f"{ind.upper()} {jenis} kelas {kelas}")
+        if bukan_rse:
+            result.warnings.append(
+                "Sebagian tanda (*) bukan karena RSE > 25% melainkan status "
+                "\"Tidak dapat rilis\", sehingga legenda BRS tidak menjelaskannya: "
+                + ", ".join(bukan_rse) + ".")
+    except Exception:
+        # Peringatan tidak boleh menggagalkan ekspor.
+        pass
+
+
 def build_idml_pariwisata(payload):
     from modules.database import get_engine
     from modules.indesign_export import paket_zip
@@ -547,6 +578,10 @@ def build_idml_pariwisata(payload):
         infografis_bytes=_asset(payload, "infografis")[0],
         infografis_name=_asset(payload, "infografis")[1],
     )
+    # Peringatan ekspor: legenda BRS hanya menyebut RSE > 25%, sedangkan tanda (*)
+    # di tabel juga dipakai untuk angka berstatus "Tidak dapat rilis". Tanpa catatan
+    # ini, tanda bintang pada angka ber-RSE rendah tidak punya penjelasan.
+    _catat_legenda_bintang(data, result)
     name = f"BRS_Pariwisata_{prov.replace(' ', '_')}_{bln}_{thn}.idml"
     return _paket_dengan_peringatan(
         paket_zip(result.idml_bytes, name, template_dir=Path(template_path).parent), result.warnings)
