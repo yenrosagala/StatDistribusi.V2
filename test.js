@@ -349,3 +349,15 @@ test('the supervisor restarts only when the sidecar reports stale modules', () =
   assert.equal(needsRestart({ ok: true }), false);
   assert.equal(needsRestart(null), false);
 });
+
+test('the pariwisata prompt uses hari/poin units, never "malam"', () => {
+  // BRS units: TPK value persen, RLMT value hari, both deltas poin. The prompt
+  // previously told the model to write RLMT values and deltas in "malam", so
+  // every generated RLMT narrative read "1,95 malam / naik 0,16 malam".
+  const prompt = readFileSync(new URL('./pariwisata_prompt.py', import.meta.url), 'utf8');
+  assert.ok(!/malam/.test(prompt), 'prompt must not mention "malam"');
+  // The prompt source stores escaped quotes (\\"hari\\"), so match that form.
+  assert.ok(prompt.includes('\\"hari\\"'), 'RLMT value unit must be hari');
+  assert.ok(prompt.includes('selisih ditulis dalam \\"poin\\"'), 'RLMT delta unit must be poin');
+  assert.ok(prompt.includes('[persen/hari]'), 'paragraph skeleton must offer persen/hari');
+});
