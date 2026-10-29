@@ -197,14 +197,22 @@ def build_prompt(engine, province, year, month, jenis, indicator, table=GENERAL_
 
     # Official reference values (Prov_Jenis sheet) replace the class mean for the
     # periods that sheet covers; every other cell stays a class mean.
+    # Deltas are computed from the UNROUNDED reference values, then rounded once.
+    # Subtracting the already-rounded cells (56,97 - 52,01) gave 4,96 while the
+    # true difference is 4,9539, i.e. 4,95 -- the model then copied the wrong
+    # figure into the narrative.
+    mentah = {}
     for cell, (yr, mo) in (("last_year", (last_year, month)),
                            ("prev", (prev_year, prev_month)),
                            ("current", (year, month))):
         ref = ref_avg.get((jenis, yr, mo))
         if ref:
+            mentah[cell] = float(ref[indicator])
             avg_row.loc["Total", cell] = round(ref[indicator], 2)
-    avg_row["change_prev"] = (avg_row["current"] - avg_row["prev"]).round(2)
-    avg_row["change_last"] = (avg_row["current"] - avg_row["last_year"]).round(2)
+    for cell in ("last_year", "prev", "current"):
+        mentah.setdefault(cell, float(avg_row.loc["Total", cell]))
+    avg_row.loc["Total", "change_prev"] = round(mentah["current"] - mentah["prev"], 2)
+    avg_row.loc["Total", "change_last"] = round(mentah["current"] - mentah["last_year"], 2)
 
     # (*) marks this month's per-class values where RSE > 25%. The Total row is
     # never starred (display_df carries no Total row).

@@ -1078,10 +1078,14 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
     if root is not None and blok:
         paragraf = _paragraf_narasi((ai_narasi or {}).get(("Hotel Bintang", "tpk")))
         if paragraf:
-            # Narasi AI: paragraf sendiri, definisi glosarium tetap utuh.
+            # Definisi statistik dan angka periode berada dalam SATU paragraf pada
+            # template rev. Sep 2026, jadi ganti dari jangkar saja. Memakai
+            # _tambah_paragraf_narasi di sini memecah paragraf dan menyisakan
+            # potongan definisi menggantung ("Tingkat Penghunian Kamar (").
             narasi_ai.add(GLOSARIUM_TPK)
-            _tambah_paragraf_narasi(root, _psr_akar(root), paragraf[0], warnings,
-                                    GLOSARIUM_TPK, tertulis=tertulis)
+            _tulis_setelah_jangkar(_psr_akar(root), "Tingkat Penghunian Kamar (TPK)",
+                                   paragraf[0], warnings, GLOSARIUM_TPK,
+                                   tertulis=tertulis)
         else:
             kalimat = kalimat_bln_ini(blok["rows"], "Hotel Bintang", "tpk", prov, bln, thn,
                                       prev_bln, prev_thn, total=total_blok(blok))
