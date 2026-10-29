@@ -372,19 +372,25 @@ def build_xlsx_pariwisata(payload):
                 # (lihat _tanda_bintang di indesign_pariwisata.py), jadi jangan
                 # dibandingkan lagi dengan 0.25 di sini.
                 tanda = blk.get("rse") or {}
+                tanda_prev = blk.get("rse_prev") or {}
+                tanda_last = blk.get("rse_last") or {}
                 body = []
                 chart_labels = []
                 chart_values = ([], [])
 
+                def bertanda(nilai, flag):
+                    # Hitungan tetap numerik; yang ditambah hanya tanda (*).
+                    hasil = angka(nilai)
+                    if hasil is not None and bool(flag):
+                        hasil = f"{hasil:.2f}*"
+                    return hasil
+
                 for kelas, (ly, prev, cur) in sorted(blk["rows"].items()):
-                    nilai = angka(cur)
-                    if nilai is not None and bool(tanda.get(kelas)):
-                        nilai = f"{nilai:.2f}*"
                     body.append([
                         f"{label_kelas(jenis)} {kelas}",
-                        angka(ly),
-                        angka(prev),
-                        nilai,
+                        bertanda(ly, tanda_last.get(kelas)),
+                        bertanda(prev, tanda_prev.get(kelas)),
+                        bertanda(cur, tanda.get(kelas)),
                         selisih(cur - prev if not pd.isna(cur) and not pd.isna(prev) else None),
                         selisih(cur - ly if not pd.isna(cur) and not pd.isna(ly) else None),
                     ])

@@ -401,4 +401,28 @@ test('toNumber tells Indonesian and plain decimals apart', () => {
   assert.equal(toNumber('1.234.567,89'), 1234567.89);
   assert.equal(toNumber(''), null);
   assert.equal(toNumber('abc'), null);
+});test('the comparison columns are starred on their own period', () => {
+  // Each column is judged on the row of its own period: a figure is starred for
+  // its own RSE/status, never inherited from the current month.
+  const rows = [
+    { jenis_akomodasi: 'Hotel Bintang', kelas_akomodasi: 1, year: 2026, month: 9, tpk: 40, tpk_rse: 0, tpk_ket: 'Tidak dapat rilis' },
+    { jenis_akomodasi: 'Hotel Bintang', kelas_akomodasi: 1, year: 2026, month: 8, tpk: 36, tpk_rse: 0, tpk_ket: 'Dapat rilis' },
+    { jenis_akomodasi: 'Hotel Bintang', kelas_akomodasi: 1, year: 2025, month: 9, tpk: 32, tpk_rse: 0.9, tpk_ket: 'Dapat rilis' },
+    { jenis_akomodasi: 'Hotel Bintang', kelas_akomodasi: 2, year: 2026, month: 9, tpk: 20, tpk_rse: 0, tpk_ket: 'Dapat rilis' },
+    { jenis_akomodasi: 'Hotel Bintang', kelas_akomodasi: 2, year: 2026, month: 8, tpk: 25, tpk_rse: 0.8, tpk_ket: 'Dapat rilis' },
+  ];
+  const t = reportTable(rows, { jenis: 'Hotel Bintang', indicator: 'tpk', year: 2026, month: 9, prevYear: 2026, prevMonth: 8, lastYear: 2025, domain: [1, 2] });
+  const k1 = t.body.find((r) => r.kelas === 1);
+  const k2 = t.body.find((r) => r.kelas === 2);
+  // kelas 1: current flagged by ket, last flagged by RSE, prev clean
+  assert.equal(k1.starred, true);
+  assert.equal(k1.starredLast, true);
+  assert.equal(k1.starredPrev, false);
+  // kelas 2: only the previous month is weak
+  assert.equal(k2.starred, false);
+  assert.equal(k2.starredPrev, true);
+  assert.equal(k2.starredLast, false);
+  // starCount drives whether the footnote is shown, so it counts ROWS with at
+  // least one starred cell, not the number of starred cells.
+  assert.equal(t.starCount, 2);
 });

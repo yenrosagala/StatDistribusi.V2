@@ -220,6 +220,8 @@ export function reportTable(rows, opts) {
     const pv = value(prev, k);
     const lv = value(last, k);
     const curRow = cur.has(k) ? cur.get(k) : null;
+    const prevRow = prev.has(k) ? prev.get(k) : null;
+    const lastRow = last.has(k) ? last.get(k) : null;
     const starred = isFlagged(curRow, indicator, cv);
     return {
       kelas: k,
@@ -230,6 +232,10 @@ export function reportTable(rows, opts) {
       changePrev: cv != null && pv != null ? round2(cv - pv) : null,
       changeLast: cv != null && lv != null ? round2(cv - lv) : null,
       starred,
+      // The comparison columns carry their own marker: each figure is judged on
+      // the row of its own period, not on the current month's status.
+      starredPrev: isFlagged(prevRow, indicator, pv),
+      starredLast: isFlagged(lastRow, indicator, lv),
       // Why the row is starred, so the footnote can be specific instead of
       // always claiming an RSE problem.
       starReason: !starred
@@ -259,7 +265,7 @@ export function reportTable(rows, opts) {
     hasData: body.length > 0,
     // Number of kelas carrying the (*) marker. The report view uses it so the RSE
     // footnote only appears on the cards where a star is actually shown.
-    starCount: body.filter((r) => r.starred).length,
+    starCount: body.filter((r) => r.starred || r.starredPrev || r.starredLast).length,
     columns: {
       last: `${INV_MONTH_MAP[month]} ${lastYear}`,
       prev: `${INV_MONTH_MAP[prevMonth]} ${prevYear}`,
@@ -275,6 +281,8 @@ export function reportTable(rows, opts) {
       // Kept separately from `current` so the view can render the marker itself
       // while `current` stays plain text for the workbook and the tests.
       starred: r.starred,
+      starredPrev: r.starredPrev,
+      starredLast: r.starredLast,
       // 'ket' when the figure may not be released, 'rse' when it is only
       // statistically weak; null when the row is not starred.
       starReason: r.starReason,

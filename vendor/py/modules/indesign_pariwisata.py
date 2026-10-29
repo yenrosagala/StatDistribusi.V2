@@ -437,10 +437,11 @@ def _tanda_bintang(nilai, rse, ket):
 
 
 def _baca_rse(engine, prov, thn, bln_m, tabel="all_data"):
-    """RSE bulan berjalan per (jenis, kelas, indikator) untuk tanda (*).
+    """Tanda (*) per (jenis, kelas, indikator) untuk periode ``thn``/``bln_m``.
 
-    Kolom RSE baru ada setelah migrasi/pengisian ulang; DB lama maupun tabel uji
-    yang tak memuatnya -> {} supaya pembuatan BRS tetap jalan tanpa bintang.
+    Kolom RSE/ket baru ada setelah migrasi/pengisian ulang; DB lama maupun tabel
+    uji yang tak memuatnya -> {} supaya pembuatan BRS tetap jalan tanpa bintang.
+    Periode yang tidak punya data juga menghasilkan {} (baris tak dikembalikan).
     """
     try:
         df = pd.read_sql_query(
@@ -500,6 +501,10 @@ def kumpulkan_kelas(engine, prov, thn, bln, tabel="all_data"):
 
     ref = _baca_ref(engine, prov)
     rse_all = _baca_rse(engine, prov, thn, bln_m, tabel)
+    # Flag for the comparison columns. Each period is judged on its own rows:
+    # a figure is starred for its own RSE/status, not the current month's.
+    rse_prev = _baca_rse(engine, prov, prev_thn, BULAN_N[prev_bln], tabel)
+    rse_last = _baca_rse(engine, prov, int(thn) - 1, bln_m, tabel)
     periode = ((int(thn) - 1, bln_m), (int(prev_thn), BULAN_N[prev_bln]),
                (int(thn), bln_m))
     for ind in INDIKATOR:
@@ -521,6 +526,8 @@ def kumpulkan_kelas(engine, prov, thn, bln, tabel="all_data"):
                 "rows": rows,
                 "total": _total_resmi(rows, ref, jenis, ind, periode),
                 "rse": {k: rse_all.get((jenis, k, ind), np.nan) for k in kelas},
+                "rse_prev": {k: rse_prev.get((jenis, k, ind), np.nan) for k in kelas},
+                "rse_last": {k: rse_last.get((jenis, k, ind), np.nan) for k in kelas},
                 "tren": _tren(sub, kelas, ind, int(thn), bln_m, ref=ref, jenis=jenis),
             }
     return keluar

@@ -1391,7 +1391,7 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
     const fmt = (v) => (v === undefined || v === null || v === 'undefined') ? '-' : v;
     const table = `<div class="table-scroll"><table class="data-table">
   <thead><tr><th>Kelas Akomodasi</th><th>${escapeHtml(entry.table.columns.last)}</th><th>${escapeHtml(entry.table.columns.prev)}</th><th>${escapeHtml(entry.table.columns.cur)}</th><th>${escapeHtml(entry.table.columns.dPrev)}</th><th>${escapeHtml(entry.table.columns.dLast)}</th></tr></thead>
-  <tbody>${entry.table.body.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${fmt(r.last)}</td><td>${fmt(r.prev)}</td>${rseCell(r.current, r.starred, r.starReason)}<td>${growthCellButton({
+  <tbody>${entry.table.body.map((r) => `<tr><td>${escapeHtml(r.label)}</td>${rseCell(r.last, r.starredLast)}${rseCell(r.prev, r.starredPrev)}${rseCell(r.current, r.starred, r.starReason)}<td>${growthCellButton({
     dataset: 'all_data', provinsi: report.province, entity: '', jenis: entry.jenis,
     kelas: r.kelas, indicator: ind.key, year: report.year, month: Number(report.month),
     comparison: 'dprev', growth_value: r.changePrev,
