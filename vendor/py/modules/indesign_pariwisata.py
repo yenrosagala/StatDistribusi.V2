@@ -93,19 +93,23 @@ ANGKA_KELAS = {1: "satu", 2: "dua", 3: "tiga", 4: "empat"}
 BATASAN_KELAS = {"Hotel Bintang": "kelas bintang", "Hotel Non Bintang": "kelas"}
 SEL_TIDAK_ADA = "-"  # BPS menulis tanda hubung, bukan "Undefined", untuk data kosong
 
+# Slot story pada template BRS Pariwisata (rev. Sep 2026: .indt ->
+# BRS_Pariwisata_Papua_Selatan_September_2026.idml). ID di bawah dibaca dari
+# isi tiap story, bukan ditebak: satu-satunya story yang memuat <Table> dengan
+# 43 sel (13 header + 5 baris x 6) dan judul "TPK/RLMT ... <jenis>".
 TABEL_SLOTS = {
-    "uc98": ("Hotel Bintang", "tpk"),
-    "ud2a": ("Hotel Bintang", "rlmtgab"),
-    "ud82": ("Hotel Non Bintang", "tpk"),
-    "ue1d": ("Hotel Non Bintang", "rlmtgab"),
+    "ucda": ("Hotel Bintang", "tpk"),
+    "ud43": ("Hotel Bintang", "rlmtgab"),
+    "ud9b": ("Hotel Non Bintang", "tpk"),
+    "ue0f": ("Hotel Non Bintang", "rlmtgab"),
 }
+# Judul grafik: story yang diawali "Perkembangan ... di Papua Selatan,
+# Januari <thn-1> - <bln> <thn>".
 JUDUL_GRAFIK = {
-    # uc6c, bukan uc6b: story itu tidak ada di template sehingga judulnya
-    # sebelumnya dilewati diam-diam.
-    "uc6c": ("Hotel Bintang", "tpk"),
-    "ucfe": ("Hotel Bintang", "rlmtgab"),
-    "ud56": ("Hotel Non Bintang", "tpk"),
-    "udf1": ("Hotel Non Bintang", "rlmtgab"),
+    "ucae": ("Hotel Bintang", "tpk"),
+    "ud17": ("Hotel Bintang", "rlmtgab"),
+    "ud6f": ("Hotel Non Bintang", "tpk"),
+    "udd8": ("Hotel Non Bintang", "rlmtgab"),
 }
 # Nama file gambar yang di-<Link> di template, dipisah dari JUDUL_GRAFIK karena
 # yang ini harus persis sama dengan nama di Links/ (lolos URL-encode).
@@ -126,23 +130,39 @@ RASIO_GRAFIK = {
 }
 # Narasi pembanding bulan sebelumnya. ``jangkar`` dipakai kalau paragrafnya
 # menyatu definisi statis dengan angka (see GLOSARIUM_TPK).
+# Di template rev. Sep 2026 tiap ``Sub Bab BRS`` menyatukan judul indikator,
+# definisi statistik, DAN angka bulan ini dalam satu story, mis. udc2 =
+# "Rata-rata Lama Menginap Tamu (RLMT) Hotel Non Bintang" + "Rata-rata Lama
+# Menginap Tamu (RLMT) hotel nonbintang di Provinsi Papua Selatan pada September
+# 2026 tercatat sebesar 1,45 hari ...". Karena itu semuanya lewat jalur
+# ``jangkar`` dan jangkarnya adalah teks yang benar-benar ada di paragraf
+# (bukan judul sub bab di PSR terpisah).
 NARASI_BULAN_INI = {
-    "ud40": ("Hotel Non Bintang", "tpk", None),
-    "uddb": ("Hotel Non Bintang", "rlmtgab", None),
-    "uce8": ("Hotel Bintang", "rlmtgab", "RLMT Hotel Bintang pada bulan"),
+    # ud59/ucf7/udc2 diawali "Tingkat Penghunian Kamar (TPK) hotel ..." /
+    # "Rata-rata Lama Menginap Tamu (RLMT) hotel ..." setelah tab.
+    "ud59": ("Hotel Non Bintang", "tpk", "Tingkat Penghunian Kamar (TPK) hotel"),
+    "udc2": ("Hotel Non Bintang", "rlmtgab", "Rata-rata Lama Menginap Tamu (RLMT) hotel"),
+    "ucf7": ("Hotel Bintang", "rlmtgab", "Rata-rata Lama Menginap Tamu (RLMT) hotel"),
+    # TPK Hotel Bintang tidak punya paragraf "bulan ini" sendiri: angkanya sudah
+    # ada di Pointer Utama (uc35) dan di narasi y-on-y (ucc4). None = tidak ada
+    # slot, bukan slot yang gagal ditulis.
 }
 # Narasi pembanding bulan sama tahun sebelumnya.
+# Story yang diawali "Jika dibandingkan dengan <bulan> <thn-1> (y-on-y)".
 NARASI_TAHUN_LALU = {
-    "uc82": ("Hotel Bintang", "tpk"),
-    "ud14": ("Hotel Bintang", "rlmtgab"),
-    "ud6c": ("Hotel Non Bintang", "tpk"),
-    "ue07": ("Hotel Non Bintang", "rlmtgab"),
+    "ucc4": ("Hotel Bintang", "tpk"),
+    "ud2d": ("Hotel Bintang", "rlmtgab"),
+    "ud85": ("Hotel Non Bintang", "tpk"),
+    "udf9": ("Hotel Non Bintang", "rlmtgab"),
 }
-RINGKASAN = "ub99"
-RINGKASAN_UTAMA = "uc40"
-KETERANGAN_GRAFIK = "udc5"
-JUDUL_HALAMAN = "u111a"
-GLOSARIUM_TPK = "ufd7"
+# ub8d (Headline BRS) = ringkasan satu paragraf untuk kedua indikator.
+RINGKASAN = "ub8d"
+# uc35 (Pointer Utama BRS) = dua segmen, TPK lalu RLMT.
+RINGKASAN_UTAMA = "uc35"
+KETERANGAN_GRAFIK = "ue25"
+JUDUL_HALAMAN = "ubf8"
+# Story definisi TPK (murni definisi, tanpa angka periode).
+GLOSARIUM_TPK = "uc8d"
 GRAFIK_FRAMES = {}
 # Frame QR & infografis pada template yang kehilangan elemen <Link>.
 QR_FRAME = None
@@ -768,6 +788,53 @@ PROFILES = (
         "QR_FRAME": "uc0e",
         "INFOGRAFIS_FRAME": "ue1b",
     },
+    {
+        # Revisi Sep 2026: template di-export ulang dari .indt
+        # (templates/BRS_Pariwisata_Papua_Selatan_September_2026.idml). InDesign
+        # memberi SEMUA story id baru, jadi profil lama tidak lagi cocok dan
+        # dokumen keluar tanpa terisi. Id di bawah dibaca dari isi story:
+        #   - tabel: story ber-<Table> 43 sel, judulnya "TPK/RLMT <jenis> ..."
+        #   - judul grafik: "Perkembangan ... Januari <thn-1> - <bln> <thn>"
+        #   - narasi bulan ini: "Sub Bab BRS" yang memuat angka periode
+        #   - narasi y-on-y: diawali "Jika dibandingkan dengan <bln> <thn-1>"
+        #   - ub8d "Headline BRS" = ringkasan; uc35 "Pointer Utama BRS" = 2 segmen
+        #     (TPK lalu RLMT)
+        "nama": "BRS Pariwisata Papua Selatan September 2026 (rev. indt)",
+        "penanda": ("ucda", "ud43", "ud9b", "ue0f"),
+        "TABEL_SLOTS": {
+            "ucda": ("Hotel Bintang", "tpk"),
+            "ud43": ("Hotel Bintang", "rlmtgab"),
+            "ud9b": ("Hotel Non Bintang", "tpk"),
+            "ue0f": ("Hotel Non Bintang", "rlmtgab"),
+        },
+        "JUDUL_GRAFIK": {
+            "ucae": ("Hotel Bintang", "tpk"),
+            "ud17": ("Hotel Bintang", "rlmtgab"),
+            "ud6f": ("Hotel Non Bintang", "tpk"),
+            "udd8": ("Hotel Non Bintang", "rlmtgab"),
+        },
+        # TPK Hotel Bintang tidak punya paragraf "bulan ini" sendiri di template
+        # ini (angkanya ada di Pointer Utama uc35 dan narasi y-on-y ucc4).
+        "NARASI_BULAN_INI": {
+            "ud59": ("Hotel Non Bintang", "tpk", "Tingkat Penghunian Kamar (TPK) hotel"),
+            "udc2": ("Hotel Non Bintang", "rlmtgab", "Rata-rata Lama Menginap Tamu (RLMT) hotel"),
+            "ucf7": ("Hotel Bintang", "rlmtgab", "Rata-rata Lama Menginap Tamu (RLMT) hotel"),
+        },
+        "NARASI_TAHUN_LALU": {
+            "ucc4": ("Hotel Bintang", "tpk"),
+            "ud2d": ("Hotel Bintang", "rlmtgab"),
+            "ud85": ("Hotel Non Bintang", "tpk"),
+            "udf9": ("Hotel Non Bintang", "rlmtgab"),
+        },
+        "RINGKASAN": "ub8d",
+        "RINGKASAN_UTAMA": "uc35",
+        "KETERANGAN_GRAFIK": "ue25",
+        "JUDUL_HALAMAN": "ubf8",
+        "GLOSARIUM_TPK": "uc8d",
+        "GRAFIK_FRAMES": {},
+        "QR_FRAME": None,
+        "INFOGRAFIS_FRAME": None,
+    },
 )
 
 _SLOT_KEYS = (
@@ -996,9 +1063,10 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
     # 5) Ringkasan (2 segmen per paragraf)
     _tulis(_psr_akar(roots.get(RINGKASAN)), _ringkasan(data, bln, thn), warnings, RINGKASAN,
            tertulis=tertulis)
-    _tulis(_psr_akar(roots.get(RINGKASAN_UTAMA)),
-           _ringkasan_utama(data, bln, thn, prev_bln, prev_thn), warnings, RINGKASAN_UTAMA,
-           tertulis=tertulis)
+    if RINGKASAN_UTAMA:
+        _tulis(_psr_akar(roots.get(RINGKASAN_UTAMA)),
+               _ringkasan_utama(data, bln, thn, prev_bln, prev_thn), warnings, RINGKASAN_UTAMA,
+               tertulis=tertulis)
 
     # 6) Judul halaman: "Perkembangan Pariwisata " + "Provinsi X, Bln Thn"
     _tulis(_psr_akar(roots.get(JUDUL_HALAMAN), "Judul BRS"),
