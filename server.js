@@ -452,6 +452,17 @@ async function loadTransportReport(url, periods, selected, session = { role: 'ad
       return {
         tableNo,
         label,
+        // The Regenerasi form submits these four back to the narrative bridge,
+        // which needs a province, year, month and moda to rebuild the prompt.
+        // Without them the inputs rendered empty and Python raised
+        // "int() argument must be ... not 'NoneType'".
+        prov: province,
+        tahun: year,
+        // The narrative bridge does int(payload["bulan"]), so the form must post
+        // the month *number*; the name is kept for display-only fields.
+        bulan: monthName,
+        bulanNo: MONTH_NAMES.indexOf(monthName) + 1,
+        moda: target.moda,
         title: `Tabel ${tableNo} Perkembangan ${label} ${angkutan} Dalam Negeri Provinsi ${province}, ${monthName} ${year}`,
         rowLabel: target.moda === 'Transportasi Udara' ? 'Bandara' : 'Pelabuhan/Kabupaten',
         col: table.col,

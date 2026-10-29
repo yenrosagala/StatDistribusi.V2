@@ -239,7 +239,7 @@ test('exportFileName keeps province and period in every download name', () => {
 // and must stay hidden from roles that cannot export at all.
 // ---------------------------------------------------------------------------
 import { readFileSync } from 'node:fs';
-import { landingPage, setExportAvailability } from './views.js';
+import { landingPage, setExportAvailability, transportasiPage } from './views.js';
 
 const viewsSource = readFileSync(new URL('./views.js', import.meta.url), 'utf8');
 
@@ -278,4 +278,39 @@ test('a stale sidecar warns without pretending exports are dead', () => {
   assert.ok(html.includes('kode lama'), 'must name the problem');
   assert.ok(!html.includes('Ekspor dokumen nonaktif'), 'must not claim exports are off');
   setExportAvailability({ ok: true, mode: 'service' });
+});
+
+test('the transport Regenerasi form posts a numeric month and full period', () => {
+  // Regression: the report items carried no prov/tahun/bulan/moda, so the hidden
+  // inputs rendered empty and the narrative bridge raised
+  // "int() argument must be ... not 'NoneType'". The month must also be the
+  // number, because the bridge does int(payload["bulan"]).
+  const report = {
+    provinces: ['Papua Tengah'], province: 'Papua Tengah',
+    years: [2026], months: [9], year: 2026, monthName: 'September', warning: null,
+    groups: [{
+      moda: 'Transportasi Udara', icon: 'plane',
+      items: [{
+        tableNo: 1, label: 'Penumpang Datang',
+        title: 'Tabel 1', rowLabel: 'Bandara', col: 'datang',
+        columns: ['Bandara', 'Agustus 2026', 'September 2026'],
+        rows: [],
+        prov: 'Papua Tengah', tahun: 2026, bulan: 'September', bulanNo: 9, moda: 'Transportasi Udara',
+        narrative: { source: 'Database (Cached)', paras: ['Contoh narasi.'] },
+      }],
+    }],
+  };
+  const html = transportasiPage({
+    user: { name: 'Admin', role: 'admin' },
+    periods: [{ thn: 2026, bln: 'September' }],
+    selected: { thn: 2026, bln: 'September' },
+    sections: [],
+    tab: 'report',
+    report,
+  });
+  assert.ok(html.includes('name="provinsi" value="Papua Tengah"'), 'provinsi must be filled');
+  assert.ok(html.includes('name="tahun" value="2026"'), 'tahun must be filled');
+  assert.ok(html.includes('name="bulan" value="9"'), 'bulan must be the number 9');
+  assert.ok(!html.includes('name="bulan" value=""'), 'bulan must never be blank');
+  assert.ok(html.includes('name="moda" value="Transportasi Udara"'), 'moda must be filled');
 });

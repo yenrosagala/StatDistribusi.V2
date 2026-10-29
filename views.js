@@ -377,7 +377,7 @@ function brsTable(item, ctx = {}) {
 }
 
 function transportNarrativeBox(item, isAdmin) {
-  const fields = `<input type="hidden" name="kind" value="transportasi"><input type="hidden" name="provinsi" value="${escapeHtml(item.prov)}"><input type="hidden" name="tahun" value="${escapeHtml(item.tahun)}"><input type="hidden" name="bulan" value="${escapeHtml(item.bulan)}"><input type="hidden" name="moda" value="${escapeHtml(item.moda)}"><input type="hidden" name="label" value="${escapeHtml(item.label)}">`;
+  const fields = `<input type="hidden" name="kind" value="transportasi"><input type="hidden" name="provinsi" value="${escapeHtml(item.prov)}"><input type="hidden" name="tahun" value="${escapeHtml(item.tahun)}"><input type="hidden" name="bulan" value="${escapeHtml(item.bulanNo ?? item.bulan)}"><input type="hidden" name="moda" value="${escapeHtml(item.moda)}"><input type="hidden" name="label" value="${escapeHtml(item.label)}">`;
   const regen = isAdmin
     ? `<form method="post" action="/api/narrative/regenerate" class="inline-form">${fields}<button class="btn btn-secondary" type="submit">🔄 Regenerasi</button></form>`
     : '';
