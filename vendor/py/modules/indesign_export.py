@@ -584,6 +584,31 @@ def _embed_contents(block, data):
     return re.sub(rb'StoredState="[^"]*"', b'StoredState="Embedded"', block)
 
 
+FRAME_INFOGRAFIS_PT = {"transportasi": (481.9, 681.0), "pariwisata": (481.9, 693.9)}
+
+
+def _cek_resolusi(data, frame_pt, label, warnings, min_dpi=300):
+    """Peringatkan bila gambar terlalu kecil untuk frame-nya (kode tidak memperkecil apa pun)."""
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as im:
+            w_px, h_px = im.size
+    except Exception:
+        return
+    w_pt, h_pt = frame_pt
+    dpi = min(w_px / (w_pt / 72.0), h_px / (h_pt / 72.0))
+    if dpi >= min_dpi:
+        return
+    warnings.append(
+        f"{label}: gambar {w_px}x{h_px} px -> hanya {dpi:.0f} DPI pada frame "
+        f"{w_pt:.0f}x{h_pt:.0f} pt ({w_pt/72:.1f}x{h_pt/72:.1f} inci). Untuk 300 DPI perlu "
+        f"minimal {round(w_pt/72*300)}x{round(h_pt/72*300)} px (150 DPI: "
+        f"{round(w_pt/72*150)}x{round(h_pt/72*150)} px). Byte gambar ditanam apa adanya; "
+        f"InDesign yang memperbesarnya sehingga terlihat kabur."
+    )
+
+
 def _embed_image(files, order, data, name, prov, thn, bln, token, label, warnings,
                  nama_paket=None):
     """Taruh satu gambar ke dalam paket IDML, arahkan <Link>-nya ke file tersebut,
@@ -610,6 +635,8 @@ def _embed_image(files, order, data, name, prov, thn, bln, token, label, warning
     """
     if not data:
         return False
+    if str(token).lower().startswith("infografis"):
+        _cek_resolusi(data, FRAME_INFOGRAFIS_PT["transportasi"], label, warnings)
     m = re.search(r"\.(png|jpe?g)$", name or "", re.I)
     ext = "." + m.group(1).lower() if m else ".png"
     if nama_paket:
@@ -660,7 +687,8 @@ def _embed_image(files, order, data, name, prov, thn, bln, token, label, warning
     return patched > 0
 
 
-def _embed_image_ke_frame(files, order, frame_sid, data, nama_paket, warnings):
+def _embed_image_ke_frame(files, order, frame_sid, data, nama_paket, warnings,
+                            frame_pt=None, label=None):
     """Tanam gambar ke frame yang tidak punya <Link> sama sekali.
 
     Template yang di-save ulang dari InDesign bisa kehilangan seluruh elemen
@@ -675,6 +703,8 @@ def _embed_image_ke_frame(files, order, frame_sid, data, nama_paket, warnings):
 
     if not data:
         return False
+    if frame_pt:
+        _cek_resolusi(data, frame_pt, label or nama_paket, warnings)
     link_path = "Links/" + nama_paket
     files[link_path] = data
     if link_path not in order:

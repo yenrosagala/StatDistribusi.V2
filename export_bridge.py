@@ -439,6 +439,21 @@ def _asset(payload, key):
     return base64.b64decode(encoded), payload.get(f"{key}_name") or f"{key}.png"
 
 
+def _paket_dengan_peringatan(paket, warnings):
+    """Tambahkan PERINGATAN.txt ke paket .idml agar catatan ekspor ikut terbaca."""
+    if not warnings:
+        return paket
+    import zipfile
+
+    sumber = zipfile.ZipFile(io.BytesIO(paket))
+    keluar = io.BytesIO()
+    with zipfile.ZipFile(keluar, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in sumber.infolist():
+            dst.writestr(item, sumber.read(item.filename))
+        dst.writestr("PERINGATAN.txt", "\n".join("- " + w for w in warnings) + "\n")
+    return keluar.getvalue()
+
+
 def build_idml_transport(payload):
     from modules.indesign_export import DEFAULT_TEMPLATE, fill_brs_template, paket_zip
     from modules.report_page import _kab_lookup_brs, get_comparison_data
@@ -467,7 +482,8 @@ def build_idml_transport(payload):
         template_dir=DEFAULT_TEMPLATE.parent,
     )
     name = f"BRS_Transportasi_{prov.replace(' ', '_')}_{bln}_{thn}.idml"
-    return paket_zip(result.idml_bytes, name, template_dir=DEFAULT_TEMPLATE.parent)
+    return _paket_dengan_peringatan(
+        paket_zip(result.idml_bytes, name, template_dir=DEFAULT_TEMPLATE.parent), result.warnings)
 
 
 def _narasi_ai_pariwisata(engine, prov, thn, bln):
@@ -520,7 +536,8 @@ def build_idml_pariwisata(payload):
         infografis_name=_asset(payload, "infografis")[1],
     )
     name = f"BRS_Pariwisata_{prov.replace(' ', '_')}_{bln}_{thn}.idml"
-    return paket_zip(result.idml_bytes, name, template_dir=Path(template_path).parent)
+    return _paket_dengan_peringatan(
+        paket_zip(result.idml_bytes, name, template_dir=Path(template_path).parent), result.warnings)
 
 
 BUILDERS = {

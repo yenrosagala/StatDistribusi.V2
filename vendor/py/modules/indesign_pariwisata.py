@@ -1082,7 +1082,8 @@ def fill_brs_pariwisata_template(template_bytes, prov, thn, bln, data,
     if infografis_bytes:
         if INFOGRAFIS_FRAME:
             _embed_image_ke_frame(files, order, INFOGRAFIS_FRAME, infografis_bytes,
-                                  infografis_name or "Infografis.jpg", warnings)
+                                  infografis_name or "Infografis.jpg", warnings,
+                                  frame_pt=(481.9, 693.9), label="Infografis")
         else:
             _embed_image(files, order, infografis_bytes, infografis_name, prov, thn, bln,
                          "Infografis", "Infografis", warnings)
