@@ -2013,11 +2013,6 @@ function wisnusCard(report, configs) {
   <tbody>${barisTahun(tahunLalu, lalu, WARNA_LALU)}${barisTahun(tahunIni, ini, WARNA_INI)}</tbody>
 </table></div>`;
 
-  const baris = tujuan.map((t) => `<tr>
-    <td>${escapeHtml(t.nama || t.kode)}</td>
-    <td>${formatIdNumber(t.jumlah, 0)}</td>
-    <td>${formatIdNumber(t.peran, 2)}</td></tr>`).join('');
-
   // Struktur kartu sengaja disamakan dengan kartu indikator YoY:
   //   card-header -> ai-note -> table-scroll -> chart-frame -> table-scroll
   return `<section class="dashboard-card report-card">
@@ -2031,10 +2026,6 @@ function wisnusCard(report, configs) {
   ${tabelBulan}
   <h3>${escapeHtml(judulTujuan)}</h3>
   <div class="chart-frame" style="height:340px"><canvas id="wisnus-tujuan"></canvas></div>
-  <div class="table-scroll"><table class="data-table">
-    <thead><tr><th>Kabupaten/Kota Tujuan</th><th>Jumlah Perjalanan</th><th>% Peran</th></tr></thead>
-    <tbody>${baris || '<tr><td colspan="3">Belum ada data Wisnus untuk periode ini.</td></tr>'}</tbody>
-  </table></div>
 </section>`;
 }
 
