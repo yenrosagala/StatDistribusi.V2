@@ -10,6 +10,7 @@ import {
 } from './lib-transport.js';
 import { cleanNumber, computeUploadStats, parseTransportFile } from './etl-transport.js';
 import { toNumber } from './etl-pariwisata.js';
+import { namaPelabuhan } from './pelabuhan-nama.js';
 import { exportFileName } from './export.js';
 
 test('prevPeriod rolls back over the year boundary', () => {
@@ -655,4 +656,46 @@ test('Perdagangan is no longer a sidebar link for admins', () => {
   assert.ok(html.includes('id="pdg-negara-impor"'), 'kanvas impor ada');
   assert.ok(html.includes('"type":"bar"'), 'grafik bertipe bar');
   assert.ok(html.includes('Kumulatif 2025') && html.includes('Kumulatif 2026'), 'dua seri kumulatif');
+});test('the Laporan tab groups 1-5 in Ekspor, 6-9 in Impor, and 10 separately', () => {
+  const nilai = [null, null, 100, null, 250];
+  const laporan = {
+    ekspor: { ringkasan: [{ label: 'Total', nilai }], hs2: [{ label: 'HS44', nilai }],
+      negara: [{ label: 'Australia', nilai }, { label: 'Total', nilai }],
+      pelabuhan: [{ label: 'JAYAPURA', nilai }, { label: 'Total', nilai }] },
+    impor: { ringkasan: [{ label: 'Total', nilai }], hs2: [{ label: 'HS84', nilai }],
+      negara: [{ label: 'Tiongkok', nilai }, { label: 'Total', nilai }],
+      pelabuhan: [{ label: 'MERAUKE', nilai }] },
+    neraca: { ringkasan: [{ label: 'Total', nilai: [null, null, -100, null, -250] }], rekap: [] },
+  };
+  const html = perdaganganPage({
+    user: { name: 'Admin', role: 'admin' }, tab: 'laporan',
+    provinsi: ['Papua'], province: 'Papua', tahun: 2026, bulan: 8,
+    periods: [{ tahun: 2026, bulan: 8 }], ringkasan: null, laporan,
+  });
+
+  // Tiga kartu: Ekspor, Impor, Neraca Perdagangan.
+  const kartu = [...html.matchAll(/<h2>([^<]*)<\/h2>/g)].map((m) => m[1]);
+  assert.deepEqual(kartu, ['Ekspor', 'Impor', 'Neraca Perdagangan']);
+
+  // Nomor 1-5 berada setelah judul "Ekspor" dan sebelum judul "Impor".
+  const pos = (frag) => html.indexOf(frag);
+  assert.ok(pos('>Ekspor</h2>') < pos('1. Ringkasan Perkembangan Ekspor'));
+  assert.ok(pos('5. Nilai Ekspor Menurut Pelabuhan Muat') < pos('>Impor</h2>'));
+  assert.ok(pos('>Impor</h2>') < pos('6. Nilai Impor Migas'));
+  assert.ok(pos('9. Perbandingan Nilai Kumulatif Impor') < pos('>Neraca Perdagangan</h2>'));
+  assert.ok(pos('>Neraca Perdagangan</h2>') < pos('10. Ringkasan Perkembangan Neraca'));
+
+  // Setiap tabel punya wadah narasi; dua grafik tidak.
+  const slot = [...html.matchAll(/data-narasi="([^"]*)"/g)].map((m) => m[1]);
+  assert.deepEqual(slot, ['ekspor-ringkasan', 'ekspor-hs2', 'ekspor-negara', 'ekspor-pelabuhan',
+    'impor-ringkasan', 'impor-hs2', 'impor-negara', 'neraca-ringkasan']);
+});
+
+test('port codes are rendered with names from the master file', () => {
+  assert.equal(namaPelabuhan('94974'), 'JAYAPURA');
+  assert.equal(namaPelabuhan('31431'), 'TANJUNG PRIOK');
+  assert.equal(namaPelabuhan('94001'), 'SKOUW');
+  // Kode tak dikenal dikembalikan apa adanya, bukan kosong.
+  assert.equal(namaPelabuhan('00000'), '00000');
+  assert.equal(namaPelabuhan(null), '-');
 });

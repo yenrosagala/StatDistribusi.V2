@@ -4,6 +4,7 @@
 // Basis resmi: ekspor PROVORIG, impor KPPBC. Basis POD/KDPROV hanya untuk
 // rincian pelabuhan/provinsi tujuan dan tidak boleh dijumlahkan dengan yang resmi.
 import { pool } from './db.js';
+import { namaPelabuhan } from './pelabuhan-nama.js';
 
 const BASIS_EKSPOR = 'PROVORIG';
 const BASIS_IMPOR = 'KPPBC';
@@ -386,6 +387,9 @@ function beriLabel(daftar, dimensi, hs2Labels) {
       const lab = hs2Labels.get(String(r.label));
       return { ...r, label: lab || `HS${r.label}` };
     }
+    if (dimensi === 'pelabuhan') {
+      return { ...r, label: namaPelabuhan(r.label) };
+    }
     return r;
   });
 }
@@ -410,10 +414,11 @@ export async function perdaganganLaporan(prov, tahun, bulan) {
   ekspor.hs2 = beriLabel(ekspor.hs2, 'hs2', hs2Labels);
   ekspor.negara = beriLabel(ekspor.negara, 'negara', hs2Labels);
   // Pelabuhan muat memakai basis POD, bukan angka resmi.
-  ekspor.pelabuhan = tabelArus(eksporPod, tahun, bulan, periodeAda).pelabuhan;
+  ekspor.pelabuhan = beriLabel(tabelArus(eksporPod, tahun, bulan, periodeAda).pelabuhan, 'pelabuhan', hs2Labels);
   const impor = tabelArus(imporResmi, tahun, bulan, periodeAda);
   impor.hs2 = beriLabel(impor.hs2, 'hs2', hs2Labels);
   impor.negara = beriLabel(impor.negara, 'negara', hs2Labels);
+  impor.pelabuhan = beriLabel(impor.pelabuhan, 'pelabuhan', hs2Labels);
 
   const neraca = {
     ringkasan: ekspor.ringkasan.map((r, i) => ({

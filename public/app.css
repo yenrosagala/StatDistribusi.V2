@@ -65,6 +65,18 @@ a { color: inherit; text-decoration: none; }
 .table-laporan td { padding: 6px 8px; }
 .table-laporan td:first-child { text-align: left; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 .table-laporan tr.total-row td { font-weight: 700; background: var(--surface-2); }
+
+/* Kartu laporan: satu kartu memuat beberapa tabel bernomor. */
+.laporan-kartu .section-header { align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.laporan-blok { margin-top: 18px; }
+.laporan-blok:first-of-type { margin-top: 10px; }
+.laporan-blok h3 {
+  margin: 0 0 8px; font-size: 13.5px; font-weight: 700; color: var(--ink);
+}
+/* Wadah narasi AI per tabel; diisi setelah narasi tersedia. */
+.narasi-slot { margin-top: 10px; }
+.narasi-slot p { margin: 4px 0 0; }
+.narasi-slot.is-empty { opacity: .75; }
 /* RSE marker: raised and coloured so it reads as a marker, not a typo. */
 .rse-star {
   color: #b45309; font-weight: 700; font-size: .78em;

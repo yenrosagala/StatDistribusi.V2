@@ -788,92 +788,83 @@ function perdaganganAdmin({ stage = null, ringkas = null, log = [], periode = []
  * Tabel laporan bergaya laporan perdagangan BPS: 5 kolom periode + 6 kolom
  * turunan (% perubahan, % peran, selisih). Nilai sudah dalam Ribu US$.
  */
-function tabelPerdagangan(caption, baris, labelKolom, konteks) {
-  const { tahunLaporan, bulanLaporan, tahunPrev, bulanPrev } = konteks;
-  if (!baris || !baris.length) {
-    return `<section class="dashboard-card"><h2>${escapeHtml(caption)}</h2>
-  <div class="alert alert-info">Belum ada data untuk periode ini.</div></section>`;
-  }
+/**
+ * Satu blok tabel di dalam kartu laporan: judul bernomor, tabel, lalu wadah
+ * narasi AI. Wadah narasi sengaja kosong untuk sekarang — diisi lewat
+ * data-narasi (kunci) supaya bisa disambungkan ke generator nanti.
+ */
+function blokTabel({ nomor, judul, baris, labelKolom, konteks, kunci }) {
   const f = (v) => (v == null ? '&ndash;' : formatIdNumber(v, 2));
   const pct = (now, prev) => (now == null || prev == null || prev === 0
     ? '&ndash;' : formatIdNumber(((now - prev) / prev) * 100, 2));
-  const total = baris[0].nilai;
+  const total = baris && baris.length ? baris[0].nilai : [null, null, null, null, null];
   const peran = (v, base) => (v == null || base == null || base === 0
     ? '&ndash;' : formatIdNumber((v / base) * 100, 2));
   const selisih = (a, b) => (a == null || b == null ? '&ndash;' : formatIdNumber(a - b, 2));
 
-  const rows = baris.map((r) => {
-    const v = r.nilai;
-    const kelas = /^Total/i.test(r.label) ? ' class="total-row"' : '';
-    return `<tr${kelas}><td>${escapeHtml(r.label)}</td>
-  <td>${f(v[0])}</td><td>${f(v[1])}</td><td>${f(v[2])}</td><td>${f(v[3])}</td><td>${f(v[4])}</td>
-  <td>${pct(v[2], v[1])}</td><td>${pct(v[4], v[3])}</td>
-  <td>${peran(v[2], total[2])}</td><td>${peran(v[4], total[4])}</td>
-  <td>${selisih(v[2], v[1])}</td><td>${selisih(v[4], v[3])}</td></tr>`;
-  }).join('');
-
-  return `<section class="dashboard-card">
-  <h2>${escapeHtml(caption)}</h2>
-  <div class="table-scroll"><table class="data-table table-laporan">
+  const isi = !baris || !baris.length
+    ? '<div class="alert alert-info">Belum ada data untuk periode ini.</div>'
+    : `<div class="table-scroll"><table class="data-table table-laporan">
     <thead>
       <tr><th rowspan="2">${escapeHtml(labelKolom)}</th>
-        <th>${escapeHtml(MONTH_NAMES[bulanLaporan - 1] || '')} ${tahunLaporan - 1}</th>
-        <th>${escapeHtml(MONTH_NAMES[bulanPrev - 1] || '')} ${tahunPrev}</th>
-        <th>${escapeHtml(MONTH_NAMES[bulanLaporan - 1] || '')} ${tahunLaporan}</th>
-        <th>Jan&ndash;${escapeHtml(MONTH_NAMES[bulanLaporan - 1] || '')} ${tahunLaporan - 1}</th>
-        <th>Jan&ndash;${escapeHtml(MONTH_NAMES[bulanLaporan - 1] || '')} ${tahunLaporan}</th>
+        <th>${escapeHtml(MONTH_NAMES[konteks.bulanLaporan - 1] || '')} ${konteks.tahunLaporan - 1}</th>
+        <th>${escapeHtml(MONTH_NAMES[konteks.bulanPrev - 1] || '')} ${konteks.tahunPrev}</th>
+        <th>${escapeHtml(MONTH_NAMES[konteks.bulanLaporan - 1] || '')} ${konteks.tahunLaporan}</th>
+        <th>Jan&ndash;${escapeHtml(MONTH_NAMES[konteks.bulanLaporan - 1] || '')} ${konteks.tahunLaporan - 1}</th>
+        <th>Jan&ndash;${escapeHtml(MONTH_NAMES[konteks.bulanLaporan - 1] || '')} ${konteks.tahunLaporan}</th>
         <th colspan="2">% Perubahan</th><th colspan="2">% Peran thd Total</th><th colspan="2">Selisih</th></tr>
       <tr><th colspan="5"></th><th>bulanan</th><th>kumulatif</th>
         <th>bulan</th><th>kumulatif</th><th>bulanan</th><th>kumulatif</th></tr>
     </thead>
-    <tbody>${rows}</tbody>
-  </table></div>
-</section>`;
+    <tbody>${baris.map((r) => {
+      const v = r.nilai;
+      return `<tr${/^Total/i.test(r.label) ? ' class="total-row"' : ''}><td>${escapeHtml(r.label)}</td>
+      <td>${f(v[0])}</td><td>${f(v[1])}</td><td>${f(v[2])}</td><td>${f(v[3])}</td><td>${f(v[4])}</td>
+      <td>${pct(v[2], v[1])}</td><td>${pct(v[4], v[3])}</td>
+      <td>${peran(v[2], total[2])}</td><td>${peran(v[4], total[4])}</td>
+      <td>${selisih(v[2], v[1])}</td><td>${selisih(v[4], v[3])}</td></tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+
+  return `<div class="laporan-blok">
+  <h3>${nomor}. ${escapeHtml(judul)}</h3>
+  ${isi}
+  <div class="ai-note narasi-slot" data-narasi="${escapeHtml(kunci)}">
+    <strong>Narasi AI</strong>
+    <p class="muted">Belum tersedia untuk tabel ini.</p>
+  </div>
+</div>`;
+}
+
+/** Wadah grafik di dalam kartu laporan. */
+function blokGrafik({ nomor, judul, canvasId, catatan, kosong }) {
+  return `<div class="laporan-blok">
+  <h3>${nomor}. ${escapeHtml(judul)}</h3>
+  ${kosong
+    ? '<div class="alert alert-info">Belum ada data negara untuk periode ini.</div>'
+    : `<div class="chart-frame" style="height:360px"><canvas id="${canvasId}"></canvas></div>`}
+  ${catatan ? `<p class="side-note">${escapeHtml(catatan)}</p>` : ''}
+</div>`;
 }
 
 /**
- * Isi tab Laporan, dengan urutan tetap seperti yang diminta:
- *
- *   1. Ringkasan Perkembangan Ekspor
- *   2. Ekspor menurut Golongan HS 2 Digit
- *   3. Ekspor menurut Negara Tujuan
- *   4. Grafik batang kumulatif ekspor per negara (tahun lalu vs tahun ini)
- *   5. Ekspor menurut Pelabuhan Muat
- *   6. Impor Migas dan Nonmigas
- *   7. Impor menurut Golongan HS 2 Digit
- *   8. Impor menurut Negara Asal
- *   9. Grafik batang kumulatif impor per negara (tahun lalu vs tahun ini)
- *  10. Ringkasan Perkembangan Neraca Perdagangan
- *
- * Mengembalikan { html, charts } karena dua grafik perlu didaftarkan ke
- * chartScript di layout.
+ * Isi tab Laporan. Bagian 1-5 di dalam kartu "Ekspor", 6-9 di dalam kartu
+ * "Impor", dan 10 berdiri sendiri sebagai kartu neraca.
  */
 function perdaganganLaporanView({ tahun, bulan, laporan }) {
   const prev = bulan > 1 ? { tahun, bulan: bulan - 1 } : { tahun: tahun - 1, bulan: 12 };
   const konteks = { tahunLaporan: tahun, bulanLaporan: bulan, tahunPrev: prev.tahun, bulanPrev: prev.bulan };
   const f = (v) => (v == null ? '&ndash;' : formatIdNumber(v, 2));
+  const bulanNama = MONTH_NAMES[bulan - 1];
 
-  const judulBagian = (teks, catatan) => `<section class="dashboard-card">
-  <div class="section-header"><h2>${escapeHtml(teks)}</h2></div>
-  ${catatan ? `<p class="side-note">${escapeHtml(catatan)}</p>` : ''}
-</section>`;
-
-  // --- grafik batang: kumulatif per negara, tahun lalu vs tahun ini ---
-  const grafikNegara = (kunci, id, judul) => {
+  // --- grafik batang kumulatif per negara ---
+  const grafikNegara = (kunci, canvasId, judul) => {
     const baris = (laporan[kunci]?.negara || []).filter((r) => !/^Total/i.test(r.label)).slice(0, 10);
-    const kanvas = `<section class="dashboard-card">
-  <h2>${escapeHtml(judul)}</h2>
-  <div class="chart-frame" style="height:360px"><canvas id="${id}"></canvas></div>
-  <p class="side-note">Kumulatif Januari&ndash;${escapeHtml(MONTH_NAMES[bulan - 1])}, dalam Ribu US$.</p>
-</section>`;
-    if (!baris.length) {
-      return { html: `<section class="dashboard-card"><h2>${escapeHtml(judul)}</h2>
-  <div class="alert alert-info">Belum ada data negara untuk periode ini.</div></section>`, chart: null };
-    }
+    if (!baris.length) return { kosong: true, chart: null };
     return {
-      html: kanvas,
+      kosong: false,
       chart: {
-        id,
+        id: canvasId,
         type: 'bar',
         title: judul,
         labels: baris.map((r) => r.label),
@@ -885,17 +876,46 @@ function perdaganganLaporanView({ tahun, bulan, laporan }) {
     };
   };
 
-  const ekspor = laporan.ekspor;
-  const impor = laporan.impor;
-  const neraca = laporan.neraca;
-
   const gEkspor = grafikNegara('ekspor', 'pdg-negara-ekspor',
     `Perbandingan Nilai Kumulatif Ekspor Menurut Negara Tujuan (Ribu US$), ${tahun - 1} dan ${tahun}`);
   const gImpor = grafikNegara('impor', 'pdg-negara-impor',
     `Perbandingan Nilai Kumulatif Impor Menurut Negara Asal (Ribu US$), ${tahun - 1} dan ${tahun}`);
 
-  // --- neraca ---
-  const n = neraca.ringkasan;
+  const ekspor = laporan.ekspor;
+  const impor = laporan.impor;
+  const n = laporan.neraca.ringkasan;
+
+  const kartuEkspor = `<section class="dashboard-card laporan-kartu">
+  <div class="section-header"><h2>Ekspor</h2>
+    <span class="side-note">Nilai dalam Ribu US$, basis PROVORIG; pelabuhan muat basis POD.</span></div>
+  ${blokTabel({ nomor: 1, judul: 'Ringkasan Perkembangan Ekspor', baris: ekspor.ringkasan,
+    labelKolom: 'Uraian', konteks, kunci: 'ekspor-ringkasan' })}
+  ${blokTabel({ nomor: 2, judul: 'Nilai Ekspor Menurut Golongan HS 2 Digit (10 terbesar)', baris: ekspor.hs2,
+    labelKolom: 'Golongan Barang', konteks, kunci: 'ekspor-hs2' })}
+  ${blokTabel({ nomor: 3, judul: 'Nilai Ekspor Menurut Negara Tujuan (10 terbesar)', baris: ekspor.negara,
+    labelKolom: 'Negara', konteks, kunci: 'ekspor-negara' })}
+  ${blokGrafik({ nomor: 4, judul: `Perbandingan Nilai Kumulatif Ekspor Menurut Negara Tujuan (Ribu US$), ${tahun - 1} dan ${tahun}`,
+    canvasId: 'pdg-negara-ekspor', kosong: gEkspor.kosong,
+    catatan: `Kumulatif Januari–${bulanNama}, dalam Ribu US$.` })}
+  ${blokTabel({ nomor: 5, judul: 'Nilai Ekspor Menurut Pelabuhan Muat', baris: ekspor.pelabuhan,
+    labelKolom: 'Pelabuhan', konteks, kunci: 'ekspor-pelabuhan' })}
+</section>`;
+
+  const kartuImpor = `<section class="dashboard-card laporan-kartu">
+  <div class="section-header"><h2>Impor</h2>
+    <span class="side-note">Nilai dalam Ribu US$, basis KPPBC.</span></div>
+  ${blokTabel({ nomor: 6, judul: 'Nilai Impor Migas dan Nonmigas', baris: impor.ringkasan,
+    labelKolom: 'Uraian', konteks, kunci: 'impor-ringkasan' })}
+  ${blokTabel({ nomor: 7, judul: 'Nilai Impor Menurut Golongan HS 2 Digit (10 terbesar)', baris: impor.hs2,
+    labelKolom: 'Golongan Barang', konteks, kunci: 'impor-hs2' })}
+  ${blokTabel({ nomor: 8, judul: 'Nilai Impor Menurut Negara Asal (10 terbesar)', baris: impor.negara,
+    labelKolom: 'Negara', konteks, kunci: 'impor-negara' })}
+  ${blokGrafik({ nomor: 9, judul: `Perbandingan Nilai Kumulatif Impor Menurut Negara Asal (Ribu US$), ${tahun - 1} dan ${tahun}`,
+    canvasId: 'pdg-negara-impor', kosong: gImpor.kosong,
+    catatan: `Kumulatif Januari–${bulanNama}, dalam Ribu US$.` })}
+</section>`;
+
+  // --- kartu 10: neraca, berdiri sendiri ---
   const kpi = (label, v, sub) => `<div class="metric-card">
   <span class="stat-label">${escapeHtml(label)}</span>
   <span class="metric-value${v != null && v < 0 ? ' neg' : ''}">${f(v)}</span>
@@ -909,47 +929,39 @@ function perdaganganLaporanView({ tahun, bulan, laporan }) {
   <td>${r.nilai[2] == null || r.nilai[1] == null ? '&ndash;' : formatIdNumber(r.nilai[2] - r.nilai[1], 2)}</td>
   <td>${r.nilai[4] == null || r.nilai[3] == null ? '&ndash;' : formatIdNumber(r.nilai[4] - r.nilai[3], 2)}</td></tr>`).join('');
 
-  const blokNeraca = `<section class="dashboard-card">
+  const kartuNeraca = `<section class="dashboard-card laporan-kartu">
   <div class="section-header"><h2>Neraca Perdagangan</h2></div>
   <div class="metric-grid">
-    ${kpi(`Neraca ${MONTH_NAMES[bulan - 1]} ${tahun}`, n[0].nilai[2], statusNeraca(n[0].nilai[2]))}
-    ${kpi(`Neraca Jan–${MONTH_NAMES[bulan - 1]} ${tahun}`, n[0].nilai[4], statusNeraca(n[0].nilai[4]))}
-    ${kpi(`Neraca ${MONTH_NAMES[bulan - 1]} ${tahun - 1}`, n[0].nilai[0], statusNeraca(n[0].nilai[0]))}
+    ${kpi(`Neraca ${bulanNama} ${tahun}`, n[0].nilai[2], statusNeraca(n[0].nilai[2]))}
+    ${kpi(`Neraca Jan–${bulanNama} ${tahun}`, n[0].nilai[4], statusNeraca(n[0].nilai[4]))}
+    ${kpi(`Neraca ${bulanNama} ${tahun - 1}`, n[0].nilai[0], statusNeraca(n[0].nilai[0]))}
   </div>
-</section>
-<section class="dashboard-card">
-  <h2>10. Ringkasan Perkembangan Neraca Perdagangan</h2>
-  <div class="table-scroll"><table class="data-table table-laporan">
-    <thead><tr><th>Uraian</th>
-      <th>${escapeHtml(MONTH_NAMES[bulan - 1])} ${tahun - 1}</th>
-      <th>${escapeHtml(MONTH_NAMES[prev.bulan - 1])} ${prev.tahun}</th>
-      <th>${escapeHtml(MONTH_NAMES[bulan - 1])} ${tahun}</th>
-      <th>Jan&ndash;${escapeHtml(MONTH_NAMES[bulan - 1])} ${tahun - 1}</th>
-      <th>Jan&ndash;${escapeHtml(MONTH_NAMES[bulan - 1])} ${tahun}</th>
-      <th>Status bulan</th><th>Status kumulatif</th><th>Selisih bulanan</th><th>Selisih kumulatif</th>
-    </tr></thead>
-    <tbody>${barisNeraca}</tbody>
-  </table></div>
+  <div class="laporan-blok">
+    <h3>10. Ringkasan Perkembangan Neraca Perdagangan</h3>
+    <div class="table-scroll"><table class="data-table table-laporan">
+      <thead><tr><th>Uraian</th>
+        <th>${escapeHtml(bulanNama)} ${tahun - 1}</th>
+        <th>${escapeHtml(MONTH_NAMES[prev.bulan - 1])} ${prev.tahun}</th>
+        <th>${escapeHtml(bulanNama)} ${tahun}</th>
+        <th>Jan&ndash;${escapeHtml(bulanNama)} ${tahun - 1}</th>
+        <th>Jan&ndash;${escapeHtml(bulanNama)} ${tahun}</th>
+        <th>Status bulan</th><th>Status kumulatif</th><th>Selisih bulanan</th><th>Selisih kumulatif</th>
+      </tr></thead>
+      <tbody>${barisNeraca}</tbody>
+    </table></div>
+    <div class="ai-note narasi-slot" data-narasi="neraca-ringkasan">
+      <strong>Narasi AI</strong>
+      <p class="muted">Belum tersedia untuk tabel ini.</p>
+    </div>
+  </div>
   <p class="side-note">Ekspor berbasis provinsi asal barang (PROVORIG), pelabuhan muat berbasis POD;
     impor berbasis KPPBC. Neraca per provinsi adalah perkiraan.</p>
 </section>`;
 
-  const html = [
-    judulBagian('Ekspor', 'Nilai dalam Ribu US$.'),
-    tabelPerdagangan('1. Ringkasan Perkembangan Ekspor', ekspor.ringkasan, 'Uraian', konteks),
-    tabelPerdagangan('2. Nilai Ekspor Menurut Golongan HS 2 Digit (10 terbesar)', ekspor.hs2, 'Golongan Barang', konteks),
-    tabelPerdagangan('3. Nilai Ekspor Menurut Negara Tujuan (10 terbesar)', ekspor.negara, 'Negara', konteks),
-    gEkspor.html,
-    tabelPerdagangan('5. Nilai Ekspor Menurut Pelabuhan Muat', ekspor.pelabuhan, 'Pelabuhan', konteks),
-    judulBagian('Impor', 'Nilai dalam Ribu US$.'),
-    tabelPerdagangan('6. Nilai Impor Migas dan Nonmigas', impor.ringkasan, 'Uraian', konteks),
-    tabelPerdagangan('7. Nilai Impor Menurut Golongan HS 2 Digit (10 terbesar)', impor.hs2, 'Golongan Barang', konteks),
-    tabelPerdagangan('8. Nilai Impor Menurut Negara Asal (10 terbesar)', impor.negara, 'Negara', konteks),
-    gImpor.html,
-    blokNeraca,
-  ].join('');
-
-  return { html, charts: [gEkspor.chart, gImpor.chart].filter(Boolean) };
+  return {
+    html: kartuEkspor + kartuImpor + kartuNeraca,
+    charts: [gEkspor.chart, gImpor.chart].filter(Boolean),
+  };
 }
 
 export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, tahun, bulan,
