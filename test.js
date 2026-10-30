@@ -814,3 +814,21 @@ test('parsePerdaganganZip memilih DBF bila satu ZIP memuat DBF dan Excel', async
   assert.equal(papua.ekspor.length, 0);
   assert.ok(!papua.warnings.some((w) => w.includes('Excel')), 'bukan jalur Excel');
 });
+test('readXlsxDetail melewati sheet bantu seperti "cek1"', async () => {
+  const XLSX = await import('xlsx');
+  const { parsePerdaganganZip } = await import('./etl-perdagangan.js');
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['pemeriksaan'], ['ok']]), 'cek1');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['YEAR', 'MTH', 'KODE_HS', 'HS2', 'PEL_MUAT', 'PROVPOD', 'PROVORIG', 'NGRTUJUAN',
+      'NEGARA', 'PELABUHAN', 'NETTO', 'FOB', 'KETERANGAN'],
+    ['2026', '02', '03048700', '03', 'IDTPE', '94', '9471', 'US', '411', '35563', 9940.91, 82333.5, 'NonMigas'],
+  ]), '94_Atap__ekspor_2602_PROVORIG_b');
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const hasil = parsePerdaganganZip([
+    { name: '94_Atap__ekspor_2602_PROVORIG.xlsx', buffer },
+  ]);
+  const papua = hasil.find((p) => p.kode === '94');
+  assert.equal(papua.ekspor.length, 1, 'sheet data dipakai, bukan sheet cek1');
+  assert.equal(papua.ekspor[0].fob, 82333.5);
+});

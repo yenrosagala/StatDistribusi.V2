@@ -45,17 +45,43 @@ async function ensureTables() {
  * jadi hasilnya bisa langsung masuk toEkspor()/toImpor(). Sheet lain di berkas
  * itu hanya pivot ringkasan, bukan data detail.
  */
+// Kolom penanda data detail. Dipakai memilih sheet yang benar: berkas ATAP
+// kadang menyisipkan sheet bantu (mis. "cek1") di depan sheet data.
+const PENANDA_EKSPOR = ['YEAR', 'MTH', 'KODE_HS', 'FOB', 'NETTO'];
+const PENANDA_IMPOR = ['TIPE', 'JENIS', 'HS', 'HS2', 'KPPBC'];
+
 function readXlsxDetail(buffer) {
   const wb = xlsx.read(buffer, { type: 'buffer' });
-  const namaSheet = wb.SheetNames[0];
-  const mentah = xlsx.utils.sheet_to_json(wb.Sheets[namaSheet], { defval: '', raw: true });
-  if (!mentah.length) throw new Error(`Sheet "${namaSheet}" tidak memuat baris data.`);
-  const rows = mentah.map((r) => {
-    const o = {};
-    for (const [k, v] of Object.entries(r)) o[String(k).trim().toUpperCase()] = v;
-    return o;
-  });
-  return { fields: Object.keys(rows[0]).map((name) => ({ name })), rows, sheet: namaSheet };
+  const kandidat = [];
+  for (const namaSheet of wb.SheetNames) {
+    const mentah = xlsx.utils.sheet_to_json(wb.Sheets[namaSheet], { defval: '', raw: true });
+    if (!mentah.length) continue;
+    const rows = mentah.map((r) => {
+      const o = {};
+      for (const [k, v] of Object.entries(r)) o[String(k).trim().toUpperCase()] = v;
+      return o;
+    });
+    const kunci = new Set(Object.keys(rows[0]));
+    const skor = [...PENANDA_EKSPOR, ...PENANDA_IMPOR].filter((k) => kunci.has(k)).length;
+    const adaPeriodeImpor = [...kunci].some((k) => /^B\d{4}$/.test(k));
+    kandidat.push({ namaSheet, rows, skor, adaPeriodeImpor, jumlah: rows.length });
+  }
+  if (!kandidat.length) {
+    throw new Error(`Tidak ada sheet berisi data (sheet: ${wb.SheetNames.join(', ') || 'kosong'}).`);
+  }
+  // Sheet dengan kolom penanda terbanyak yang dipakai; sheet bantu seperti
+  // "cek1" (kosong atau kolomnya lain) otomatis terlewat.
+  kandidat.sort((a, b) => (b.skor - a.skor) || (b.jumlah - a.jumlah));
+  const pilih = kandidat[0];
+  if (pilih.skor < 2 && !pilih.adaPeriodeImpor) {
+    throw new Error('Tidak menemukan sheet data perdagangan (kolom YEAR/MTH/KODE_HS '
+      + `atau HS/TIPE/JENIS). Sheet yang ada: ${wb.SheetNames.join(', ')}.`);
+  }
+  return {
+    fields: Object.keys(pilih.rows[0]).map((name) => ({ name })),
+    rows: pilih.rows,
+    sheet: pilih.namaSheet,
+  };
 }
 
 /** Nama berkas yang dikenali. Toleran terhadap huruf besar/kecil dan spasi. */
