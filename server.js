@@ -34,6 +34,7 @@ import {
   perdaganganRingkasPeriode,
 } from './perdagangan.js';
 import { parsePerdaganganZip, savePerdagangan } from './etl-perdagangan.js';
+import { parseWisnusWorkbook, saveWisnus, wisnusRekap } from './wisnus.js';
 import { readZip } from './zip-reader.js';
 import { deleteStaged, getStaged, pruneStaged, putStaged, stagingStore } from './upload-store.js';
 import { cellKey, deleteNote, getNote, normaliseCell, noteKeysFor, saveNote } from './growth-notes.js';
@@ -633,6 +634,14 @@ async function loadReport(url, info, session = { role: 'admin' }) {
   const report = { provinces, province, years, months, year, month, indicators: [], warning: null };
   if (!province || !year || !month) return report;
 
+  // Wisnus: seri bulanan + rincian kab/kota tujuan (halaman 8 BRS).
+  try {
+    report.wisnus = await wisnusRekap(province, year, month);
+  } catch (err) {
+    console.warn('[pariwisata] wisnus tidak terbaca:', err.message);
+    report.wisnus = null;
+  }
+
   const prevMonth = month > 1 ? month - 1 : 12;
   const prevYear = month > 1 ? year : year - 1;
   const hasPrev = info.some((r) => String(r.kd_prov) === province
@@ -1224,6 +1233,28 @@ async function buildPerdagangan(session, url) {
     if (url.pathname.startsWith('/pariwisata/admin/')) {
       if (session.role !== 'admin') return sendHtml(res, errorPage('Akses admin diperlukan.'), 403);
       await pruneUploads();
+
+      // Unggah Excel Wisnus (sheet Series Home/Tujuan KabKota).
+      if (req.method === 'POST' && url.pathname === '/pariwisata/admin/wisnus/upload') {
+        const form = await parseMultipart(req);
+        const berkas = form.files.find((f) => /\.xlsx?$/i.test(f.name));
+        const provinsi = String(form.fields.provinsi || '').trim();
+        const balik = '/pariwisata?tab=admin&sub=wisnus';
+        if (!berkas) return redirect(res, flash(balik, 'Pilih berkas Excel Wisnus (.xlsx).', false));
+        if (!TARGET_PROVINCES.includes(provinsi)) {
+          return redirect(res, flash(balik, 'Provinsi tidak dikenal.', false));
+        }
+        try {
+          const hasil = parseWisnusWorkbook(berkas.buffer, provinsi);
+          const simpan = await saveWisnus(provinsi, hasil, berkas.name);
+          const rincian = Object.values(hasil.ringkas)
+            .map((r) => `${r.sheet}: ${r.kabkota} kab/kota`).join(', ');
+          return redirect(res, flash(balik,
+            `${provinsi}: ${simpan.baris} baris Wisnus tersimpan (${simpan.periode.length} bulan; ${rincian}).`, true));
+        } catch (err) {
+          return redirect(res, flash(balik, `Gagal membaca Excel Wisnus: ${err.message}`, false));
+        }
+      }
 
       if (req.method === 'POST' && url.pathname === '/pariwisata/admin/upload') {
         const { files } = await parseMultipart(req);

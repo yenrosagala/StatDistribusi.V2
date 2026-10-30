@@ -1207,6 +1207,24 @@ export function pariwisataPage({ user, info, periods, tab = 'home', map = null, 
   } else if (tab === 'admin') {
     const adminView = pariwisataAdminView(admin || {});
     body += adminView.body;
+    body += `<section class="dashboard-card">
+  <h2>Unggah Excel Wisnus</h2>
+  <p class="side-note">Berkas bulanan BPS "Prov &lt;kode&gt; Wisnus &lt;tahun&gt;-M&lt;bb&gt;.xlsx".
+    Hanya sheet <code>Series Home KabKota</code> dan <code>Series Tujuan KabKota</code>
+    yang dibaca; periode yang sama akan diganti.</p>
+  <form method="post" action="/pariwisata/admin/wisnus/upload" class="admin-form" enctype="multipart/form-data">
+    <div class="admin-grid">
+      <label>Provinsi
+        <select name="provinsi">
+          ${['Papua', 'Papua Selatan', 'Papua Tengah', 'Papua Pegunungan']
+            .map((p) => option(p, p, false)).join('')}
+        </select>
+      </label>
+      <label>Berkas Excel <input type="file" name="file" accept=".xlsx" required></label>
+    </div>
+    <button class="btn btn-primary" type="submit">Unggah &amp; Simpan Wisnus</button>
+  </form>
+</section>`;
     if (adminView.charts && adminView.charts.length) scripts.push(chartScript(adminView.charts));
   } else {
     body += `<h2 class="hero-title">Selamat datang, ${escapeHtml(user.name)}</h2>
@@ -1916,8 +1934,74 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
 </section>`;
   }).join('')).join('');
 
+  const wisnus = report.wisnus ? wisnusCard(report, configs) : '';
   const canExport = user.role === 'admin' || user.role === 'user';
-  return { html: `${head}${cards}${canExport ? pariwisataExportCard(report) : ''}`, configs };
+  return { html: `${head}${cards}${wisnus}${canExport ? pariwisataExportCard(report) : ''}`, configs };
+}
+
+/**
+ * Kartu Kunjungan Wisnus (halaman 8 BRS): seri bulanan tahun lalu vs tahun ini,
+ * angka bulan berjalan/kumulatif, dan kab/kota tujuan teratas.
+ */
+function wisnusCard(report, configs) {
+  const w = report.wisnus || {};
+  const seri = w.seri || [];
+  const tahunIni = report.year;
+  const tahunLalu = tahunIni - 1;
+  const peta = (t) => new Map(seri.filter((r) => r.tahun === t).map((r) => [r.bulan, r.jumlah]));
+  const ini = peta(tahunIni);
+  const lalu = peta(tahunLalu);
+  const bulanAda = [...new Set([...ini.keys(), ...lalu.keys()])].sort((a, b) => a - b);
+
+  if (bulanAda.length) {
+    configs.push({
+      id: 'wisnus-seri',
+      type: 'line',
+      title: `Perkembangan Kunjungan Wisnus ${report.province}, ${tahunLalu} dan ${tahunIni}`,
+      labels: bulanAda.map((b) => MONTH_NAMES[b - 1]),
+      datasets: [
+        // Warna sama dengan seri laporan lain (PREV/CUR_COLOR di reportTab).
+        { label: `Kunjungan ${tahunLalu}`, data: bulanAda.map((b) => lalu.get(b) ?? null), color: '#70AD47' },
+        { label: `Kunjungan ${tahunIni}`, data: bulanAda.map((b) => ini.get(b) ?? null), color: '#ED7D31' },
+      ],
+    });
+  }
+
+  const pct = (a, b) => (b ? ((a - b) / b) * 100 : null);
+  const formatPct = (v) => (v === null || v === undefined ? '-' : `${formatIdNumber(v, 2)} persen`);
+  const bulan = report.month;
+  const kini = ini.get(bulan) ?? 0;
+  const sblm = ini.get(bulan - 1) ?? null;
+  const tahunLaluBulan = lalu.get(bulan) ?? null;
+  const kpi = (judul, nilai, sub = '') => `<div class="metric-card">
+    <span class="stat-label">${escapeHtml(judul)}</span>
+    <span class="metric-value">${escapeHtml(nilai)}</span>
+    ${sub ? `<span class="side-note">${escapeHtml(sub)}</span>` : ''}
+  </div>`;
+
+  const tujuan = (w.tujuan || []).slice(0, 10);
+  const baris = tujuan.map((t) => `<tr>
+    <td>${escapeHtml(t.nama || t.kode)}</td>
+    <td>${formatIdNumber(t.jumlah, 0)}</td>
+    <td>${formatIdNumber(t.peran, 2)}</td></tr>`).join('');
+
+  return `<section class="dashboard-card">
+  <div class="section-header"><h2>Kunjungan Wisatawan Nusantara (Wisnus)</h2>
+    <span class="side-note">Sumber: sheet "Series Home KabKota" dan "Series Tujuan KabKota".</span></div>
+  <div class="metric-grid">
+    ${kpi(`Kunjungan ${MONTH_NAMES[bulan - 1]} ${tahunIni}`, formatIdNumber(kini, 0),
+      `month-to-month ${formatPct(pct(kini, sblm))}`)}
+    ${kpi(`Kumulatif Januari\u2013${MONTH_NAMES[bulan - 1]} ${tahunIni}`, formatIdNumber(w.totalKum || 0, 0),
+      'menurut kab/kota tujuan')}
+    ${kpi(`Year-on-year ${MONTH_NAMES[bulan - 1]}`, formatPct(pct(kini, tahunLaluBulan)), 'dibanding tahun lalu')}
+  </div>
+  <div class="chart-frame" style="height:340px"><canvas id="wisnus-seri"></canvas></div>
+  <h3>Kabupaten/Kota Tujuan Utama, Januari\u2013${MONTH_NAMES[bulan - 1]} ${tahunIni}</h3>
+  <div class="table-scroll"><table class="data-table">
+    <thead><tr><th>Kabupaten/Kota</th><th>Jumlah Perjalanan</th><th>% Peran</th></tr></thead>
+    <tbody>${baris || '<tr><td colspan="3">Belum ada data Wisnus untuk periode ini.</td></tr>'}</tbody>
+  </table></div>
+</section>`;
 }
 
 function pariwisataExportCard(report) {

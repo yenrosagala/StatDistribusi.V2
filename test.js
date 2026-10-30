@@ -832,3 +832,15 @@ test('readXlsxDetail melewati sheet bantu seperti "cek1"', async () => {
   assert.equal(papua.ekspor.length, 1, 'sheet data dipakai, bukan sheet cek1');
   assert.equal(papua.ekspor[0].fob, 82333.5);
 });
+test('bacaKolomBulan mengenali dua format label bulan Excel Wisnus', async () => {
+  const { bacaKolomBulan, labelKabkota } = await import('./wisnus.js');
+  assert.deepEqual(bacaKolomBulan("Jan.'19"), { bulan: 1, tahun: 2019 });
+  assert.deepEqual(bacaKolomBulan("Sep '26"), { bulan: 9, tahun: 2026 });
+  assert.deepEqual(bacaKolomBulan("Agt.'25"), { bulan: 8, tahun: 2025 });
+  assert.deepEqual(bacaKolomBulan("Des.'25"), { bulan: 12, tahun: 2025 });
+  assert.equal(bacaKolomBulan('Total'), null);
+  assert.equal(bacaKolomBulan('kode_kab'), null);
+  // 9471 = kota, 9403 = kabupaten, walau namanya sama di berkas.
+  assert.equal(labelKabkota('9471', 'JAYAPURA'), 'Kota Jayapura');
+  assert.equal(labelKabkota('9403', 'JAYAPURA'), 'Kabupaten Jayapura');
+});
