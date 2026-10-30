@@ -167,7 +167,10 @@ export async function wisnusRekap(prov, tahun, bulan) {
   const seri = await pool.query(`
     SELECT tahun, bulan, SUM(jumlah)::bigint AS jumlah
       FROM wisnus_series
-     WHERE prov=$1 AND arah='tujuan' AND tahun IN ($2, $3) AND bulan <= $4
+     WHERE prov=$1 AND arah='tujuan' AND tahun IN ($2, $3)
+       -- Tahun lalu ditampilkan penuh (Jan-Des), tahun berjalan sampai bulan
+       -- terpilih, seperti tabel pada BRS.
+       AND (tahun=$3 OR bulan <= $4)
      GROUP BY tahun, bulan ORDER BY tahun, bulan`,
     [prov, tahun, tahun - 1, bulan]);
 
