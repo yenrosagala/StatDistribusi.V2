@@ -885,31 +885,44 @@ def build_idml_exim(payload):
             warnings.append("Frame QR tidak ditemukan di template; kode QR hanya "
                             "disertakan sebagai berkas di folder Links/.")
 
-    # Infografis: template belum punya frame infografis, jadi hanya disertakan
-    # sebagai berkas agar bisa diletakkan manual di InDesign.
+    # Infografis: ditanam bila template sudah punya frame bernama "infografis";
+    # kalau belum, berkasnya tetap disertakan di Links/ untuk diletakkan manual.
     info_bytes, info_name = _asset(payload, "infografis")
     tambahan = {}
     if info_bytes:
-        ext = (re.search(r"\.(png|jpe?g)$", info_name or "", re.I) or [None, "png"])[1]
-        tambahan[f"Links/infografis.{ext.lower()}"] = info_bytes
-        warnings.append("Infografis disertakan di folder Links/ (template BRS Exim belum "
-                        "punya frame infografis, jadi belum ditempel otomatis).")
+        idml_bytes, tertanam = _idml_tanam_gambar(
+            idml_bytes, info_bytes, info_name, "infografis", "Infografis",
+            warnings, prov, thn, bln)
+        if tertanam:
+            warnings.append("Infografis ditanam ke frame infografis di dalam dokumen.")
+        else:
+            ext = (re.search(r"\.(png|jpe?g)$", info_name or "", re.I) or [None, "png"])[1]
+            tambahan[f"Links/infografis.{ext.lower()}"] = info_bytes
+            warnings.append("Infografis disertakan di folder Links/ (template BRS Exim "
+                            "belum punya frame infografis, jadi belum ditempel otomatis).")
 
-    # Grafik batang web (tabel 4 dan 9) sebagai berkas pendamping.
+    # Grafik batang web (tabel 4 dan 9): ditanam bila template punya frame bernama
+    # "grafik-ekspor" dan "grafik-impor"; kalau belum, disertakan di Links/.
     grafik = _grafik_perdagangan(data, thn)
-    tambahan.update(grafik)
-    if grafik:
+    belum = []
+    for nama_grafik, png in sorted(grafik.items()):
+        arus = "ekspor" if "ekspor" in nama_grafik else "impor"
+        idml_bytes, tertanam = _idml_tanam_gambar(
+            idml_bytes, png, nama_grafik.split("/")[-1], f"grafik-{arus}",
+            f"Grafik {arus}", warnings, prov, thn, bln)
+        if tertanam:
+            warnings.append(f"Grafik batang {arus} ditanam ke frame grafik di dalam dokumen.")
+        else:
+            tambahan[nama_grafik] = png
+            belum.append(nama_grafik.split("/")[-1])
+    if belum:
         warnings.append("Grafik batang disertakan di folder Links/ "
-                        f"({', '.join(sorted(n.split('/')[-1] for n in grafik))}); "
-                        "template BRS Exim belum punya frame grafik, jadi belum "
-                        "ditempel otomatis.")
+                        f"({', '.join(sorted(belum))}); template BRS Exim belum punya "
+                        "frame grafik, jadi belum ditempel otomatis.")
 
-    if not (payload.get("nomor") or "").strip() and not (payload.get("tanggal") or "").strip():
-        pass
-    elif True:
+    if (payload.get("nomor") or "").strip() or (payload.get("tanggal") or "").strip():
         warnings.append("Nomor BRS dan tanggal rilis belum bisa dicetak: template BRS "
                         "Exim belum punya kolom untuk keduanya.")
-
     nama = f"BRS_Exim_{prov.replace(' ', '_')}_{bln}_{thn}.idml"
     paket = paket_zip(idml_bytes, nama, template_dir=folder)
     if tambahan:
