@@ -16,6 +16,7 @@ from pathlib import Path
 
 _AKAR = Path(__file__).resolve().parents[3]
 _CACHE: dict | None = None
+_SINGKAT_RE = re.compile(r"[A-Za-z]+")
 
 
 def _muat() -> dict:
@@ -47,6 +48,19 @@ def nama(kode, bawaan=None):
     return bawaan if bawaan is not None else kode
 
 
+
+def _judul(teks):
+    """Samakan gaya penulisan dengan template BRS: "TANJUNG PERAK" -> "Tanjung Perak".
+
+    Singkatan pendek (maksimal 3 huruf, mis. U, PTT, ST, JKT, IJ) dibiarkan
+    kapital supaya "(U)" dan "JKT./" tidak berubah jadi "(u)" dan "Jkt./".
+    """
+    def satu(m):
+        kata = m.group(0)
+        return kata if len(kata) <= 3 else kata[:1].upper() + kata[1:].lower()
+    return _SINGKAT_RE.sub(satu, str(teks))
+
+
 def label(kode):
-    """Nama pelabuhan, atau kode apa adanya bila tidak ada di master."""
-    return nama(kode, bawaan=str(kode).strip())
+    """Nama pelabuhan bergaya BRS, atau kode apa adanya bila tidak ada di master."""
+    return _judul(nama(kode, bawaan=str(kode).strip()))

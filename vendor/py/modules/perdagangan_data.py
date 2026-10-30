@@ -280,6 +280,8 @@ def kumpulkan_perdagangan(engine, prov, thn, bln):
         "ekspor_pelabuhan_resmi": entitas("ekspor", "pelabuhan"),
         # Tampilan web memakai basis POD sesuai laporan acuan BPS.
         "ekspor_pelabuhan": entitas("ekspor", "pelabuhan", basis="POD"),
+        # Rincian pelabuhan bongkar untuk Excel (basis KPPBC, sama seperti web).
+        "impor_pelabuhan_resmi": entitas("impor", "pelabuhan"),
         "impor_hs2": entitas("impor", "hs2"),
         "impor_negara": entitas("impor", "negara"),
         "meta": {

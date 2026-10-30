@@ -719,9 +719,9 @@ test('Perdagangan is no longer a sidebar link for admins', () => {
 });
 
 test('port codes are rendered with names from the master file', () => {
-  assert.equal(namaPelabuhan('94974'), 'JAYAPURA');
-  assert.equal(namaPelabuhan('31431'), 'TANJUNG PRIOK');
-  assert.equal(namaPelabuhan('94001'), 'SKOUW');
+  assert.equal(namaPelabuhan('94974'), 'Jayapura');
+  assert.equal(namaPelabuhan('31431'), 'Tanjung Priok');
+  assert.equal(namaPelabuhan('94001'), 'Skouw');
   // Kode tak dikenal dikembalikan apa adanya, bukan kosong.
   assert.equal(namaPelabuhan('00000'), '00000');
   assert.equal(namaPelabuhan(null), '-');

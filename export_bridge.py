@@ -729,7 +729,9 @@ def build_xlsx_perdagangan(payload):
         for kunci, label, pelabel in (
                 ("hs2", "HS 2 Digit", label_golongan),
                 ("negara", "Negara", label_negara),
-                ("pelabuhan_resmi", "Pelabuhan Muat", label_pelabuhan)):
+                ("pelabuhan_resmi",
+                 "Pelabuhan Muat" if arus == "ekspor" else "Pelabuhan Bongkar",
+                 label_pelabuhan)):
             daftar = data.get(f"{arus}_{kunci}")
             if not daftar:
                 continue
