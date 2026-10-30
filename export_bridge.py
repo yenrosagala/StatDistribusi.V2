@@ -778,19 +778,85 @@ def build_xlsx_perdagangan(payload):
                                top_row=len(isi["baris"]) + 3, width=900, height=380)
     output.seek(0)
     return output.getvalue()
+def _idml_tanam_gambar(idml_bytes, gambar, nama, token, label, warnings, prov, thn, bln):
+    """Tanam satu gambar ke dalam .idml (base64) pada frame yang cocok.
+
+    ``token`` dicocokkan dengan nama berkas di LinkResourceURI milik template.
+    Kembalikan (bytes_idml, berhasil).
+    """
+    import zipfile
+
+    from modules.indesign_export import _embed_image
+
+    with zipfile.ZipFile(io.BytesIO(idml_bytes)) as z:
+        order = z.namelist()
+        files = {n: z.read(n) for n in order}
+    if not _embed_image(files, order, gambar, nama, prov, thn, bln,
+                        token, label, warnings):
+        return idml_bytes, False
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for n in order:
+            z.writestr(n, files[n])
+    return buf.getvalue(), True
+
+
+def _tambah_berkas_zip(paket, tambahan):
+    """Tambahkan berkas (nama -> bytes) ke paket ZIP hasil ekspor."""
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(paket)) as sumber, \
+            zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in sumber.infolist():
+            dst.writestr(item, sumber.read(item.filename))
+        for nama, isi in tambahan.items():
+            dst.writestr(nama, isi)
+    return buf.getvalue()
+
+
+def _grafik_perdagangan(data, thn):
+    """PNG grafik batang untuk paket: (nama_berkas, bytes) per arus."""
+    from modules.perdagangan_grafik import grafik_batang
+
+    hasil = {}
+    for arus, judul, arah in (("ekspor", "Ekspor", "Tujuan"),
+                              ("impor", "Impor", "Asal")):
+        daftar = sorted(data.get(f"{arus}_negara") or [],
+                        key=lambda r: float(r.get("kum") or 0.0), reverse=True)[:10]
+        if not daftar:
+            continue
+        labels = [NEGARA_LABEL.get(str(r.get("kode")).upper(), str(r.get("kode")))
+                  for r in daftar]
+        seri = [
+            (f"Kumulatif {thn - 1}", [float(r.get("kum_last") or 0.0) for r in daftar]),
+            (f"Kumulatif {thn}", [float(r.get("kum") or 0.0) for r in daftar]),
+        ]
+        png = grafik_batang(
+            f"Perbandingan Nilai Kumulatif {judul} Menurut Negara {arah} "
+            f"(Ribu US$), {thn - 1} dan {thn}", labels, seri)
+        if png:
+            hasil[f"Links/grafik-{arus}-negara.png"] = png
+    return hasil
+
+
 def build_idml_exim(payload):
-    """Isi template BRS Ekspor-Impor dengan data dari Supabase."""
+    """Isi template BRS Ekspor-Impor dengan data dari Supabase.
+
+    Selain mengisi tabel, paket menyertakan: font dokumen yang tersedia, QR yang
+    diunggah (ditanam ke frame QR di dalam .idml), serta grafik batang dan
+    infografis sebagai berkas di folder Links/.
+    """
     from modules.database import get_engine
     from modules.exim_export import isi_template_exim
     from modules.indesign_export import paket_zip
     from modules.perdagangan_data import kumpulkan_perdagangan
 
     prov, thn = payload["prov"], int(payload["thn"])
-    # bln datang sebagai nama bulan ("Agustus") atau angka; normalkan.
     bln_raw = payload["bln"]
     bln = int(bln_raw) if str(bln_raw).isdigit() else MONTH_NUMBER[str(bln_raw)]
-    tpl = (Path(__file__).resolve().parent / "templates"
-           / "BRS Exim Papua Selatan Oktober 2026" / "BRS_Exim_Papua_Selatan.idml")
+    folder = Path(__file__).resolve().parent / "templates" / "BRS Exim Papua Selatan Oktober 2026"
+    tpl = folder / "BRS_Exim_Papua_Selatan.idml"
     if not tpl.exists():
         raise SystemExit(f"Template BRS Exim tidak ditemukan: {tpl}")
 
@@ -805,16 +871,50 @@ def build_idml_exim(payload):
         raise SystemExit(f"Tidak ada data perdagangan untuk {prov} {bln} {thn}.")
 
     warnings = []
-    # Template BRS Exim belum punya frame gambar maupun kolom nomor/tanggal,
-    # jadi isian itu dicatat sebagai peringatan, bukan ditempelkan.
-    if any(payload.get(k) for k in ('infografis_b64', 'qr_b64', 'nomor', 'tanggal')):
-        warnings.append(
-            'Template BRS Exim belum punya tempat untuk nomor BRS, tanggal rilis, '
-            'kode QR, atau infografis; isian itu tidak ditempatkan.')
     idml_bytes, warnings = isi_template_exim(tpl.read_bytes(), data, label_dari_kode, warnings)
+
+    # QR: template punya frame QR (dua tempat); tanam isi unggahannya.
+    qr_bytes, qr_name = _asset(payload, "qr")
+    if qr_bytes:
+        idml_bytes, ok = _idml_tanam_gambar(
+            idml_bytes, qr_bytes, qr_name, "qrcode", "Kode QR", warnings,
+            prov, thn, bln)
+        if ok:
+            warnings.append("Kode QR ditanam ke frame QR di dalam dokumen.")
+        else:
+            warnings.append("Frame QR tidak ditemukan di template; kode QR hanya "
+                            "disertakan sebagai berkas di folder Links/.")
+
+    # Infografis: template belum punya frame infografis, jadi hanya disertakan
+    # sebagai berkas agar bisa diletakkan manual di InDesign.
+    info_bytes, info_name = _asset(payload, "infografis")
+    tambahan = {}
+    if info_bytes:
+        ext = (re.search(r"\.(png|jpe?g)$", info_name or "", re.I) or [None, "png"])[1]
+        tambahan[f"Links/infografis.{ext.lower()}"] = info_bytes
+        warnings.append("Infografis disertakan di folder Links/ (template BRS Exim belum "
+                        "punya frame infografis, jadi belum ditempel otomatis).")
+
+    # Grafik batang web (tabel 4 dan 9) sebagai berkas pendamping.
+    grafik = _grafik_perdagangan(data, thn)
+    tambahan.update(grafik)
+    if grafik:
+        warnings.append("Grafik batang disertakan di folder Links/ "
+                        f"({', '.join(sorted(n.split('/')[-1] for n in grafik))}); "
+                        "template BRS Exim belum punya frame grafik, jadi belum "
+                        "ditempel otomatis.")
+
+    if not (payload.get("nomor") or "").strip() and not (payload.get("tanggal") or "").strip():
+        pass
+    elif True:
+        warnings.append("Nomor BRS dan tanggal rilis belum bisa dicetak: template BRS "
+                        "Exim belum punya kolom untuk keduanya.")
+
     nama = f"BRS_Exim_{prov.replace(' ', '_')}_{bln}_{thn}.idml"
-    return _paket_dengan_peringatan(
-        paket_zip(idml_bytes, nama, template_dir=tpl.parent), warnings)
+    paket = paket_zip(idml_bytes, nama, template_dir=folder)
+    if tambahan:
+        paket = _tambah_berkas_zip(paket, tambahan)
+    return _paket_dengan_peringatan(paket, warnings)
 
 
 BUILDERS = {
