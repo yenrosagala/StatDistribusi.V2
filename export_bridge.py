@@ -245,6 +245,15 @@ BAR_W_PX = BAR_W_PT * PX_PER_PT   # 616.0 px -> 462.00 pt
 BAR_H_PX = BAR_H_PT * PX_PER_PT   # 222.67 px -> 167.00 pt
 
 
+def _angka_id(value, decimals=2):
+    """Angka gaya Indonesia: titik ribuan, koma desimal (61.07 -> "61,07")."""
+    try:
+        s = f"{float(value):,.{decimals}f}"
+    except (TypeError, ValueError):
+        return str(value)
+    return s.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
 def _kelas_chart_png(labels, series):
     """Grouped bar chart for one xlsx sheet - bare, no chart chrome.
 
@@ -272,7 +281,7 @@ def _kelas_chart_png(labels, series):
         for rect, value in zip(bars, values):
             if np.isnan(value):
                 continue
-            ax.text(rect.get_x() + rect.get_width() / 2, value, f"{value:.2f}",
+            ax.text(rect.get_x() + rect.get_width() / 2, value, _angka_id(value),
                     ha="center", va="bottom", fontsize=BAR_FONT_PT,
                     color=s["color"], zorder=3)
 
