@@ -698,4 +698,29 @@ test('port codes are rendered with names from the master file', () => {
   // Kode tak dikenal dikembalikan apa adanya, bukan kosong.
   assert.equal(namaPelabuhan('00000'), '00000');
   assert.equal(namaPelabuhan(null), '-');
+});test('each perdagangan table has an AI narrative holder with a generate button', () => {
+  const nilai = [null, null, 100, null, 250];
+  const laporan = {
+    ekspor: { ringkasan: [{ label: 'Total', nilai }], hs2: [{ label: 'HS44', nilai }],
+      negara: [{ label: 'Australia', nilai }], pelabuhan: [{ label: 'JAYAPURA', nilai }] },
+    impor: { ringkasan: [{ label: 'Total', nilai }], hs2: [{ label: 'HS84', nilai }],
+      negara: [{ label: 'Tiongkok', nilai }], pelabuhan: [{ label: 'MERAUKE', nilai }] },
+    neraca: { ringkasan: [{ label: 'Total', nilai: [null, null, -100, null, -250] }], rekap: [] },
+  };
+  const dasar = { tab: 'laporan', provinsi: ['Papua Selatan'], province: 'Papua Selatan',
+    tahun: 2026, bulan: 8, periods: [{ tahun: 2026, bulan: 8 }], ringkasan: null, laporan };
+
+  const admin = perdaganganPage({ ...dasar, user: { name: 'Admin', role: 'admin' } });
+  assert.equal((admin.match(/action="\/perdagangan\/narasi\/generate"/g) || []).length, 8,
+    'delapan form generate untuk delapan tabel');
+  assert.ok(admin.includes('Buat Narasi AI'), 'tombol buat ada');
+
+  const rekon = perdaganganPage({ ...dasar, user: { name: 'Rekon', role: 'rekon' } });
+  assert.ok(!rekon.includes('/perdagangan/narasi/generate'), 'non-admin tanpa tombol');
+
+  const berisi = perdaganganPage({ ...dasar, user: { name: 'Admin', role: 'admin' },
+    narasi: { 'impor-negara': { teks: 'Nilai impor naik.\n\nParagraf kedua.', sumber: 'Gemini' } } });
+  assert.ok(berisi.includes('Regenerasi'), 'narasi tersimpan -> tombol regenerasi');
+  assert.ok(berisi.includes('Nilai impor naik.'), 'teks narasi tampil');
+  assert.ok(berisi.includes('AI Narrative — Gemini'), 'sumber narasi tampil');
 });

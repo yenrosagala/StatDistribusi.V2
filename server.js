@@ -30,7 +30,7 @@ import { EXPORT_MIME, checkExporter, exportFileName, runExport } from './export.
 import {
   PERDAGANGAN_PROVINSI, perdaganganHs2, perdaganganNegara, perdaganganPelabuhan,
   perdaganganPeriods, perdaganganRingkasan, perdaganganSeri, perdaganganEtlLog,
-  perdaganganLaporan,
+  perdaganganLaporan, perdaganganNarasi,
   perdaganganRingkasPeriode,
 } from './perdagangan.js';
 import { parsePerdaganganZip, savePerdagangan } from './etl-perdagangan.js';
@@ -949,12 +949,44 @@ async function buildPerdagangan(session, url) {
     perdaganganPelabuhan(province, tahun, bulan),
     tab === 'laporan' ? perdaganganLaporan(province, tahun, bulan) : Promise.resolve(null),
   ]);
+  const narasi = tab === 'laporan'
+    ? await perdaganganNarasi(province, tahun, bulan)
+    : {};
 
   return perdaganganPage({
     user: session, tab, provinsi: PERDAGANGAN_PROVINSI, province,
-    tahun, bulan, ringkasan, seri, hs2, negara, pelabuhan, periods, laporan,
+    tahun, bulan, ringkasan, seri, hs2, negara, pelabuhan, periods, laporan, narasi,
   });
 }
+
+    // ---- generate narasi AI untuk satu bagian laporan perdagangan ----
+    if (url.pathname === '/perdagangan/narasi/generate' && req.method === 'POST') {
+      const form = new URLSearchParams(await readBody(req));
+      const provinsi = form.get('provinsi') || '';
+      const tahun = Number(form.get('tahun'));
+      const bulanNama = form.get('bulan') || '';
+      const bagian = form.get('bagian') || '';
+      const kembali = `/perdagangan?tab=laporan&provinsi=${encodeURIComponent(provinsi)}`
+        + `&tahun=${tahun}&bulan=${MONTH_NAMES.indexOf(bulanNama) + 1}`;
+      if (session.role !== 'admin') {
+        return redirect(res, flash(kembali, 'Hanya admin yang dapat membuat narasi.', false));
+      }
+      if (!PERDAGANGAN_PROVINSI.includes(provinsi) || !MONTH_NAMES.includes(bulanNama) || !bagian) {
+        return redirect(res, flash(kembali, 'Provinsi, periode, atau bagian tidak valid.', false));
+      }
+      try {
+        const bulan = MONTH_NAMES.indexOf(bulanNama) + 1;
+        const payload = await runNarrativeBridge({
+          kind: 'perdagangan', provinsi, tahun, bulan, bagian, action: 'regenerate',
+        });
+        if (payload && payload.error) {
+          return redirect(res, flash(kembali, `Narasi gagal dibuat: ${payload.error}`, false));
+        }
+        return redirect(res, flash(kembali, `Narasi ${bagian} berhasil dibuat.`, true));
+      } catch (err) {
+        return redirect(res, flash(kembali, `Narasi gagal dibuat: ${err.message}`, false));
+      }
+    }
 
     // ---- admin modul Perdagangan: unggah ZIP DBF bulanan ----
     if (url.pathname === '/perdagangan/admin/upload' && req.method === 'POST') {

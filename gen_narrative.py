@@ -22,6 +22,8 @@ import pandas as pd
 # Port of the Streamlit prompt builder (pariwisata/ai.py) - keeps both apps' output
 # on the same persona and the same comparison table.
 from pariwisata_prompt import build_prompt
+from modules.exim_prompt import SECTIONS as EXIM_SECTIONS
+from modules.exim_prompt import build_prompt as build_exim_prompt
 
 
 MONTH_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -176,6 +178,53 @@ def run(payload):
                 with eng.begin() as c:
                     c.execute(text("INSERT INTO ai_narratives_cache (report_type,period_key,narrative_text,updated_at) VALUES (:report_type,:period_key,:narrative,now()) ON CONFLICT DO NOTHING"), {**params_r, "narrative": txt})
             return {"ok": True, "text": txt}
+
+        if kind == "perdagangan":
+            bagian = payload.get("bagian")
+            if not all([prov, tahun, bulan, bagian]):
+                return {"error": "missing params"}
+            if bagian not in EXIM_SECTIONS:
+                return {"error": f"bagian tidak dikenal: {bagian}"}
+
+            # Label ramah untuk kode HS 2 digit dan kode negara, supaya prompt
+            # tidak berisi kode mentah.
+            hs_label = {}
+            try:
+                rows = eng.connect().execute(text("SELECT kode, label FROM dim_perdagangan_hs2"))
+                hs_label = {str(r[0]): r[1] for r in rows}
+            except Exception:
+                hs_label = {}
+            from modules.exim_prompt import NEGARA_LABEL as _NEG
+
+            def label_dari_kode(kode):
+                kode = str(kode)
+                if kode.isdigit() and len(kode) == 2 and kode in hs_label:
+                    return hs_label[kode]
+                if kode.isdigit() and len(kode) == 2:
+                    return f"HS{kode}"
+                return _NEG.get(kode.upper(), kode)
+
+            try:
+                prompt, _data = build_exim_prompt(eng, prov, tahun, bulan, bagian, label_dari_kode)
+            except ValueError as exc:
+                return {"error": str(exc)}
+            txt, src = generate_text(prompt, temperature=0.3, client=client)
+            if not txt:
+                return {"error": "ai failed"}
+            txt = normalize_narrative(txt)
+
+            params_p = {"province": str(prov).strip(), "year": tahun, "month": bulan,
+                        "bagian": bagian}
+            with eng.begin() as c:
+                c.execute(text(
+                    "DELETE FROM perdagangan_ai_narratives WHERE province=:province "
+                    "AND year=:year AND month=:month AND bagian=:bagian"), params_p)
+                c.execute(text(
+                    "INSERT INTO perdagangan_ai_narratives "
+                    "(province,year,month,bagian,narrative,provider) "
+                    "VALUES (:province,:year,:month,:bagian,:narrative,:provider)"),
+                    {**params_p, "narrative": txt, "provider": src})
+            return {"ok": True, "text": txt, "provider": src}
 
         return {"error": "bad kind"}
     except Exception as e:

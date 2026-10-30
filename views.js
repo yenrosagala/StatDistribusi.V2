@@ -793,6 +793,35 @@ function perdaganganAdmin({ stage = null, ringkas = null, log = [], periode = []
  * narasi AI. Wadah narasi sengaja kosong untuk sekarang — diisi lewat
  * data-narasi (kunci) supaya bisa disambungkan ke generator nanti.
  */
+/**
+ * Wadah narasi AI: teks tersimpan bila ada, plus tombol buat/regenerasi untuk
+ * admin. Form memakai POST biasa supaya halaman kembali ke periode yang sama.
+ */
+function wadahNarasi(kunci, konteks) {
+  const n = (konteks.narasi || {})[kunci];
+  const boleh = konteks.isAdmin;
+  const tombol = boleh ? `<form method="post" action="/perdagangan/narasi/generate" class="inline-form">
+    <input type="hidden" name="provinsi" value="${escapeHtml(konteks.province)}">
+    <input type="hidden" name="tahun" value="${konteks.tahunLaporan}">
+    <input type="hidden" name="bulan" value="${escapeHtml(MONTH_NAMES[konteks.bulanLaporan - 1])}">
+    <input type="hidden" name="bagian" value="${escapeHtml(kunci)}">
+    <button class="btn btn-secondary" type="submit" style="width:auto;font-size:12px;padding:6px 10px">
+      ${n ? '🔄 Regenerasi' : '🤖 Buat Narasi AI'}
+    </button>
+  </form>` : '';
+
+  const isiNarasi = n
+    ? `<p class="muted">AI Narrative — ${escapeHtml(n.sumber)}</p>
+       ${String(n.teks).split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('')}`
+    : `<p class="muted">Belum tersedia untuk tabel ini.</p>`;
+
+  return `<div class="ai-note narasi-slot" data-narasi="${escapeHtml(kunci)}">
+    <strong>Narasi AI</strong>
+    ${isiNarasi}
+    <div class="narrative-actions">${tombol}</div>
+  </div>`;
+}
+
 function blokTabel({ nomor, judul, baris, labelKolom, konteks, kunci }) {
   const f = (v) => (v == null ? '&ndash;' : formatIdNumber(v, 2));
   const pct = (now, prev) => (now == null || prev == null || prev === 0
@@ -829,10 +858,7 @@ function blokTabel({ nomor, judul, baris, labelKolom, konteks, kunci }) {
   return `<div class="laporan-blok">
   <h3>${nomor}. ${escapeHtml(judul)}</h3>
   ${isi}
-  <div class="ai-note narasi-slot" data-narasi="${escapeHtml(kunci)}">
-    <strong>Narasi AI</strong>
-    <p class="muted">Belum tersedia untuk tabel ini.</p>
-  </div>
+  ${wadahNarasi(kunci, konteks)}
 </div>`;
 }
 
@@ -851,9 +877,10 @@ function blokGrafik({ nomor, judul, canvasId, catatan, kosong }) {
  * Isi tab Laporan. Bagian 1-5 di dalam kartu "Ekspor", 6-9 di dalam kartu
  * "Impor", dan 10 berdiri sendiri sebagai kartu neraca.
  */
-function perdaganganLaporanView({ tahun, bulan, laporan }) {
+function perdaganganLaporanView({ tahun, bulan, laporan, narasi = {}, province = '', isAdmin = false }) {
   const prev = bulan > 1 ? { tahun, bulan: bulan - 1 } : { tahun: tahun - 1, bulan: 12 };
-  const konteks = { tahunLaporan: tahun, bulanLaporan: bulan, tahunPrev: prev.tahun, bulanPrev: prev.bulan };
+  const konteks = { tahunLaporan: tahun, bulanLaporan: bulan, tahunPrev: prev.tahun,
+    bulanPrev: prev.bulan, narasi, province, isAdmin };
   const f = (v) => (v == null ? '&ndash;' : formatIdNumber(v, 2));
   const bulanNama = MONTH_NAMES[bulan - 1];
 
@@ -949,10 +976,7 @@ function perdaganganLaporanView({ tahun, bulan, laporan }) {
       </tr></thead>
       <tbody>${barisNeraca}</tbody>
     </table></div>
-    <div class="ai-note narasi-slot" data-narasi="neraca-ringkasan">
-      <strong>Narasi AI</strong>
-      <p class="muted">Belum tersedia untuk tabel ini.</p>
-    </div>
+    ${wadahNarasi('neraca-ringkasan', konteks)}
   </div>
   <p class="side-note">Ekspor berbasis provinsi asal barang (PROVORIG), pelabuhan muat berbasis POD;
     impor berbasis KPPBC. Neraca per provinsi adalah perkiraan.</p>
@@ -965,7 +989,7 @@ function perdaganganLaporanView({ tahun, bulan, laporan }) {
 }
 
 export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, tahun, bulan,
-  ringkasan, seri, hs2, negara, pelabuhan, periods, admin = null, laporan = null }) {
+  ringkasan, seri, hs2, negara, pelabuhan, periods, admin = null, laporan = null, narasi = {} }) {
   const f2 = (v) => formatIdNumber(v ?? 0, 2);
   const bulanName = MONTH_NAMES[bulan - 1] || '';
   const params = `provinsi=${encodeURIComponent(province)}&tahun=${tahun}&bulan=${bulan}`;
@@ -1080,7 +1104,9 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
 </section>`;
 
   const laporanView = tab === 'laporan' && laporan
-    ? perdaganganLaporanView({ tahun, bulan, laporan })
+    ? perdaganganLaporanView({
+        tahun, bulan, laporan, narasi, province, isAdmin: user.role === 'admin',
+      })
     : null;
   const isi = laporanView
     ? laporanView.html

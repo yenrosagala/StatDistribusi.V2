@@ -48,6 +48,9 @@ b. Bandingkan dengan tahun lalu memakai angka yang sama jelasnya; bila pembandin
    tidak tersedia, nyatakan tidak dapat dibandingkan.
 c. Berhenti di fakta terakhir. Tidak ada kalimat makna atau kesimpulan.
 
+FOKUS BAGIAN INI
+{fokus}
+
 ATURAN GAYA BRS (WAJIB)
 1. Setiap kalimat memuat fakta dari data. Tidak ada kalimat yang hanya menegaskan
    pentingnya temuan. Satu kalimat hanya membawa satu gagasan.
@@ -71,10 +74,103 @@ Data:
 {data_str}
 """
 
+# Nama negara untuk kode ISO2 yang muncul di data perdagangan.
+NEGARA_LABEL = {
+    "CN": "Tiongkok", "JP": "Jepang", "US": "Amerika Serikat", "AU": "Australia",
+    "SG": "Singapura", "MY": "Malaysia", "KR": "Korea Selatan", "IN": "India",
+    "NZ": "Selandia Baru", "PG": "Papua Nugini", "TH": "Thailand", "VN": "Vietnam",
+    "PH": "Filipina", "HK": "Hong Kong", "TW": "Taiwan", "DE": "Jerman",
+    "GB": "Inggris", "NL": "Belanda", "FR": "Prancis", "IT": "Italia", "ES": "Spanyol",
+    "FI": "Finlandia", "MX": "Meksiko", "SE": "Swedia", "NO": "Norwegia",
+    "DK": "Denmark", "AT": "Austria", "PL": "Polandia", "TR": "Turki",
+    "SA": "Arab Saudi", "AE": "Uni Emirat Arab", "EG": "Mesir",
+    "ZA": "Afrika Selatan", "AR": "Argentina", "CL": "Cile", "PE": "Peru",
+    "KH": "Kamboja", "LA": "Laos", "MM": "Myanmar", "BD": "Bangladesh",
+    "LK": "Sri Lanka", "PK": "Pakistan", "IR": "Iran", "IQ": "Irak",
+    "KW": "Kuwait", "QA": "Qatar", "BE": "Belgia", "CH": "Swiss",
+    "CA": "Kanada", "BR": "Brasil", "RU": "Rusia", "ID": "Indonesia",
+}
+
+
 SUBJEK = {
     "ekspor": "ekspor",
     "impor": "impor",
     "neraca": "neraca perdagangan",
+}
+
+# Setiap wadah narasi di halaman punya satu bagian. Kunci di sini sama dengan
+# atribut data-narasi pada views.js.
+SECTIONS = {
+    "ekspor-ringkasan": {
+        "subjek": "ekspor",
+        "judul": "Ringkasan Perkembangan Ekspor",
+        "data": "ringkasan_ekspor",
+        "jenis": "ringkasan",
+        "fokus": "Bahas total ekspor bulan ini dibanding bulan lalu, rincian migas dan "
+                 "nonmigas, serta perbandingan kumulatif dengan periode yang sama tahun lalu.",
+    },
+    "ekspor-hs2": {
+        "subjek": "ekspor",
+        "judul": "Nilai Ekspor Menurut Golongan HS 2 Digit",
+        "data": "ekspor_hs2",
+        "jenis": "entitas",
+        "label": "Golongan Barang",
+        "fokus": "Bahas golongan barang terbesar bulan ini, nilainya, dan perannya terhadap "
+                 "total ekspor. Sebut arah perubahan golongan utama bila datanya ada.",
+    },
+    "ekspor-negara": {
+        "subjek": "ekspor",
+        "judul": "Nilai Ekspor Menurut Negara Tujuan",
+        "data": "ekspor_negara",
+        "jenis": "entitas",
+        "label": "Negara",
+        "fokus": "Bahas negara tujuan terbesar bulan ini, nilainya, dan perannya terhadap "
+                 "total ekspor. Sebut arah perubahan negara utama bila datanya ada.",
+    },
+    "ekspor-pelabuhan": {
+        "subjek": "ekspor",
+        "judul": "Nilai Ekspor Menurut Pelabuhan Muat",
+        "data": "ekspor_pelabuhan",
+        "jenis": "entitas",
+        "label": "Pelabuhan",
+        "fokus": "Bahas pelabuhan muat terbesar bulan ini dan perannya terhadap total ekspor. "
+                 "Ingatkan bahwa angka pelabuhan berbasis POD, bukan angka resmi provinsi.",
+    },
+    "impor-ringkasan": {
+        "subjek": "impor",
+        "judul": "Nilai Impor Migas dan Nonmigas",
+        "data": "ringkasan_impor",
+        "jenis": "ringkasan",
+        "fokus": "Bahas total impor bulan ini dibanding bulan lalu, rincian migas dan nonmigas, "
+                 "serta perbandingan kumulatif dengan periode yang sama tahun lalu.",
+    },
+    "impor-hs2": {
+        "subjek": "impor",
+        "judul": "Nilai Impor Menurut Golongan HS 2 Digit",
+        "data": "impor_hs2",
+        "jenis": "entitas",
+        "label": "Golongan Barang",
+        "fokus": "Bahas golongan barang impor terbesar bulan ini, nilainya, dan perannya "
+                 "terhadap total impor.",
+    },
+    "impor-negara": {
+        "subjek": "impor",
+        "judul": "Nilai Impor Menurut Negara Asal",
+        "data": "impor_negara",
+        "jenis": "entitas",
+        "label": "Negara",
+        "fokus": "Bahas negara asal terbesar bulan ini, nilainya, dan perannya terhadap "
+                 "total impor.",
+    },
+    "neraca-ringkasan": {
+        "subjek": "neraca",
+        "judul": "Ringkasan Perkembangan Neraca Perdagangan",
+        "data": "ringkasan_neraca",
+        "jenis": "ringkasan",
+        "fokus": "Bahas posisi neraca bulan ini (surplus atau defisit) beserta nilainya, "
+                 "lalu bandingkan kumulatifnya dengan periode yang sama tahun lalu. "
+                 "Sebutkan juga neraca migas dan nonmigas.",
+    },
 }
 
 
@@ -92,45 +188,60 @@ def _persen(v):
 
 
 def _tabel_ringkasan(baris):
-    head = f"{'Uraian':<12}{'Agt lalu':>12}{'Jul ini':>12}{'Agt ini':>12}{'Kum lalu':>14}{'Kum ini':>14}{'MtM %':>10}{'Kum %':>10}"
+    head = (f"{'Uraian':<20}{'Agt lalu':>12}{'Jul ini':>12}{'Agt ini':>12}"
+            f"{'Kum lalu':>14}{'Kum ini':>14}{'MtM %':>10}{'Kum %':>10}")
     lines = [head]
     for r in baris:
         lines.append(
-            f"{r['label']:<12}{_fmt(r['last']):>12}{_fmt(r['prev']):>12}{_fmt(r['now']):>12}"
+            f"{r['label']:<20}{_fmt(r['last']):>12}{_fmt(r['prev']):>12}{_fmt(r['now']):>12}"
             f"{_fmt(r['kum_last']):>14}{_fmt(r['kum_now']):>14}"
             f"{_persen(r['mtm']):>10}{_persen(r['yoy_kum']):>10}")
     return "\n".join(lines)
 
 
 def _tabel_entitas(judul, daftar, label):
-    lines = [judul, f"{'Entitas':<40}{'Agt ini':>14}{'Kum ini':>14}{'% Peran':>10}"]
+    lines = [judul, f"{'Entitas':<44}{'Agt ini':>14}{'Kum ini':>14}{'% Peran':>10}"]
     total = sum(d["nilai"] for d in daftar) or 0.0
     for d in daftar:
         peran = (d["nilai"] / total * 100.0) if total else 0.0
-        lines.append(f"{label(d['kode']):<40}{_fmt(d['nilai']):>14}{_fmt(d.get('kum', 0.0)):>14}{_fmt(peran):>10}")
+        lines.append(f"{label(d['kode']):<44}{_fmt(d['nilai']):>14}"
+                     f"{_fmt(d.get('kum', 0.0)):>14}{_fmt(peran):>10}")
     return "\n".join(lines)
 
 
+def daftar_bagian():
+    """Kunci bagian yang tersedia, urut sesuai tampilan halaman."""
+    return list(SECTIONS)
+
+
 def build_prompt(engine, province, year, month, bagian, label_dari_kode=None):
-    """Bangun prompt untuk satu bagian: 'ekspor' | 'impor' | 'neraca'."""
-    if bagian not in SUBJEK:
+    """Bangun prompt untuk satu bagian narasi.
+
+    ``bagian`` memakai kunci SECTIONS (mis. "ekspor-hs2"). Kunci lama
+    ("ekspor" | "impor" | "neraca") masih diterima dan dipetakan ke bagian
+    ringkasannya.
+    """
+    alias = {"ekspor": "ekspor-ringkasan", "impor": "impor-ringkasan",
+             "neraca": "neraca-ringkasan"}
+    kunci = alias.get(bagian, bagian)
+    if kunci not in SECTIONS:
         raise ValueError(f"bagian tidak dikenal: {bagian}")
+    bag = SECTIONS[kunci]
+
     label = label_dari_kode or (lambda k: str(k))
     data = kumpulkan_perdagangan(engine, province, year, month)
     meta = data["meta"]
+    subjek = bag["subjek"]
 
-    blok = [_tabel_ringkasan(data[f"ringkasan_{bagian}"])]
-    if bagian == "ekspor":
-        blok.append(_tabel_entitas("Golongan HS 2 digit (ekspor)", data["ekspor_hs2"], label))
-        blok.append(_tabel_entitas("Negara tujuan (ekspor)", data["ekspor_negara"], label))
-        blok.append(_tabel_entitas("Pelabuhan muat (ekspor)", data["ekspor_pelabuhan"], label))
-    elif bagian == "impor":
-        blok.append(_tabel_entitas("Golongan HS 2 digit (impor)", data["impor_hs2"], label))
-        blok.append(_tabel_entitas("Negara asal (impor)", data["impor_negara"], label))
+    if bag["jenis"] == "ringkasan":
+        blok = [_tabel_ringkasan(data[bag["data"]])]
+    else:
+        blok = [_tabel_entitas(bag["judul"], data[bag["data"]], label)]
 
     prompt = EXIM_PROMPT.format(
-        bagian=bagian,
-        subjek=SUBJEK[bagian],
+        bagian=bag["judul"],
+        subjek=SUBJEK[subjek],
+        fokus=bag["fokus"],
         province=province,
         month_name=meta["bln_nama"],
         year=meta["thn"],

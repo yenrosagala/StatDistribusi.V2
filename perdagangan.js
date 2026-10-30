@@ -432,4 +432,22 @@ export async function perdaganganLaporan(prov, tahun, bulan) {
   return { ekspor, impor, neraca };
 }
 
+/** Narasi AI tersimpan untuk satu provinsi/periode, dipetakan per bagian. */
+export async function perdaganganNarasi(prov, tahun, bulan) {
+  const rows = await safeRows(
+    `SELECT bagian, narrative, provider, updated_at
+     FROM perdagangan_ai_narratives
+     WHERE province=$1 AND year=$2 AND month=$3`,
+    [prov, tahun, bulan], 'narasi perdagangan');
+  const out = {};
+  for (const r of rows) {
+    out[r.bagian] = {
+      teks: r.narrative,
+      sumber: r.provider || 'AI',
+      diperbarui: r.updated_at,
+    };
+  }
+  return out;
+}
+
 export const PERDAGANGAN_PROVINSI = ['Papua', 'Papua Selatan', 'Papua Tengah', 'Papua Pegunungan'];
