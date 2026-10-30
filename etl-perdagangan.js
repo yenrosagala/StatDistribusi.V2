@@ -6,6 +6,7 @@
 //     tidak cocok, provinsi itu DIBATALKAN (rollback), bukan disimpan diam-diam.
 //   * Mengunggah ulang satu bulan MENGGANTI bulan itu (aman untuk revisi).
 import { pool } from './db.js';
+import * as xlsx from 'xlsx';
 import { PROVINSI_PERDAGANGAN, importPeriod, num, readDbf, toEkspor, toImpor } from './dbf-perdagangan.js';
 
 const EKSPOR_COLS = ['prov', 'tahun', 'bulan', 'basis', 'hs8', 'hs2', 'kabkota_asal',
@@ -32,22 +33,46 @@ async function ensureTables() {
       id bigserial PRIMARY KEY, tahun integer NOT NULL, bulan integer NOT NULL,
       arus text NOT NULL, prov text NOT NULL, basis text NOT NULL, sumber text,
       baris integer NOT NULL DEFAULT 0, netto_total double precision, nilai_total double precision,
-      dicocokkan boolean NOT NULL DEFAULT false, loaded_at timestamptz NOT NULL DEFAULT now());`);
+      dicocokkan boolean NOT NULL DEFAULT false, catatan text,
+      loaded_at timestamptz NOT NULL DEFAULT now());
+    ALTER TABLE etl_log_perdagangan ADD COLUMN IF NOT EXISTS catatan text;`);
+}
+
+/**
+ * Baris detail dari sheet PERTAMA berkas Excel ATAP.
+ *
+ * Kolomnya memakai nama field yang sama dengan DBF (YEAR, MTH, KODE_HS, ...),
+ * jadi hasilnya bisa langsung masuk toEkspor()/toImpor(). Sheet lain di berkas
+ * itu hanya pivot ringkasan, bukan data detail.
+ */
+function readXlsxDetail(buffer) {
+  const wb = xlsx.read(buffer, { type: 'buffer' });
+  const namaSheet = wb.SheetNames[0];
+  const mentah = xlsx.utils.sheet_to_json(wb.Sheets[namaSheet], { defval: '', raw: true });
+  if (!mentah.length) throw new Error(`Sheet "${namaSheet}" tidak memuat baris data.`);
+  const rows = mentah.map((r) => {
+    const o = {};
+    for (const [k, v] of Object.entries(r)) o[String(k).trim().toUpperCase()] = v;
+    return o;
+  });
+  return { fields: Object.keys(rows[0]).map((name) => ({ name })), rows, sheet: namaSheet };
 }
 
 /** Nama berkas yang dikenali. Toleran terhadap huruf besar/kecil dan spasi. */
 function classify(name) {
   const base = name.split('/').pop().toLowerCase();
-  // Arsip ini juga memuat salinan .DBF.xlsx; hanya berkas .dbf yang diproses.
-  if (!base.endsWith('.dbf')) return null;
+  const dbf = base.endsWith('.dbf');
+  const excel = base.endsWith('.xlsx');
+  if (!dbf && !excel) return null;
   const prov = base.match(/^(9[4-7])[_\s-]/)?.[1];
   if (!prov) return null;
-  if (base.includes('ekspor') && base.includes('provorig')) return { prov, arus: 'ekspor', basis: 'PROVORIG' };
-  if (base.includes('ekspor') && base.includes('pod')) return { prov, arus: 'ekspor', basis: 'POD' };
-  if (base.includes('ekspor') && base.includes('total')) return { prov, arus: 'ekspor', basis: 'TOTAL' };
-  if (base.includes('impor') && base.includes('kppbc')) return { prov, arus: 'impor', basis: 'KPPBC' };
-  if (base.includes('impor') && base.includes('kdprov')) return { prov, arus: 'impor', basis: 'KDPROV' };
-  if (base.includes('impor') && base.includes('total')) return { prov, arus: 'impor', basis: 'TOTAL' };
+  const bentuk = dbf ? 'dbf' : 'xlsx';
+  if (base.includes('ekspor') && base.includes('provorig')) return { prov, arus: 'ekspor', basis: 'PROVORIG', bentuk };
+  if (base.includes('ekspor') && base.includes('pod')) return { prov, arus: 'ekspor', basis: 'POD', bentuk };
+  if (base.includes('ekspor') && base.includes('total')) return { prov, arus: 'ekspor', basis: 'TOTAL', bentuk };
+  if (base.includes('impor') && base.includes('kppbc')) return { prov, arus: 'impor', basis: 'KPPBC', bentuk };
+  if (base.includes('impor') && base.includes('kdprov')) return { prov, arus: 'impor', basis: 'KDPROV', bentuk };
+  if (base.includes('impor') && base.includes('total')) return { prov, arus: 'impor', basis: 'TOTAL', bentuk };
   return null;
 }
 
@@ -57,28 +82,39 @@ function classify(name) {
  */
 export function parsePerdaganganZip(entries) {
   const files = new Map();
-  for (const e of entries) {
+  // Bila satu ZIP memuat DBF dan salinan Excel-nya, DBF yang dipakai supaya
+  // tidak ada baris ganda. Excel dipakai hanya bila tidak ada DBF-nya.
+  const urut = [...entries].sort((a, b) => {
+    const nilai = (e) => (e.name.toLowerCase().endsWith('.dbf') ? 0 : 1);
+    return nilai(a) - nilai(b);
+  });
+  for (const e of urut) {
     const kind = classify(e.name);
-    if (kind) files.set(`${kind.prov}|${kind.arus}|${kind.basis}`, { ...kind, name: e.name, buffer: e.buffer });
+    if (!kind) continue;
+    const kunci = `${kind.prov}|${kind.arus}|${kind.basis}`;
+    if (files.has(kunci)) continue;
+    files.set(kunci, { ...kind, name: e.name, buffer: e.buffer });
   }
-  if (!files.size) throw new Error('ZIP tidak memuat berkas DBF perdagangan yang dikenali (pola: <kode prov>_...ekspor/impor...).');
+  if (!files.size) throw new Error('ZIP tidak memuat berkas perdagangan yang dikenali (pola: <kode prov>_...ekspor/impor... dalam .dbf atau .xlsx).');
 
   const provinsi = [];
   for (const kode of Object.keys(PROVINSI_PERDAGANGAN)) {
     const nama = PROVINSI_PERDAGANGAN[kode];
     const paket = { prov: nama, kode, ekspor: [], impor: [], log: [], warnings: [] };
 
+    const baca = (f) => (f.bentuk === 'xlsx' ? readXlsxDetail(f.buffer) : readDbf(f.buffer));
+
     for (const basis of ['PROVORIG', 'POD']) {
       const f = files.get(`${kode}|ekspor|${basis}`);
       if (!f) continue;
-      const { rows } = readDbf(f.buffer);
+      const { rows } = baca(f);
       paket.ekspor.push(...rows.map((r) => toEkspor(r, nama, basis)));
     }
 
     for (const basis of ['KPPBC', 'KDPROV']) {
       const f = files.get(`${kode}|impor|${basis}`);
       if (!f) continue;
-      const { fields, rows } = readDbf(f.buffer);
+      const { fields, rows } = baca(f);
       if (!rows.length) continue;
       const period = importPeriod(fields.map((x) => x.name));
       paket.impor.push(...rows.map((r) => toImpor(r, nama, basis, period)));
@@ -117,6 +153,30 @@ export function parsePerdaganganZip(entries) {
             paket.impor = paket.impor.filter((r) => r.basis !== basis);
           }
         }
+      }
+    }
+
+    // Unggahan Excel tidak menyertakan berkas kontrol *_total.DBF, jadi angka
+    // belum bisa diverifikasi. Catat di riwayat dengan penanda khusus supaya
+    // tidak terbaca sebagai "tidak cocok".
+    const pakaiExcel = [...files.values()]
+      .some((f) => f.prov === kode && f.bentuk === 'xlsx');
+    if (pakaiExcel) {
+      paket.warnings.push(`${nama}: unggahan Excel tanpa berkas kontrol *_total.DBF — `
+        + 'angka tersimpan tetapi belum diverifikasi.');
+      for (const [arus, basis] of [['ekspor', 'PROVORIG'], ['impor', 'KPPBC']]) {
+        const detail = arus === 'ekspor'
+          ? paket.ekspor.filter((r) => r.basis === basis)
+          : paket.impor.filter((r) => r.basis === basis);
+        if (!detail.length) continue;
+        paket.log.push({
+          arus,
+          basis,
+          netto: detail.reduce((a, r) => a + r.netto, 0),
+          nilai: detail.reduce((a, r) => a + (arus === 'ekspor' ? r.fob : r.cif), 0),
+          dicocokkan: false,
+          catatan: 'tanpa berkas kontrol (unggahan Excel)',
+        });
       }
     }
 
@@ -168,11 +228,11 @@ export async function savePerdagangan(provinsi, sumber = 'upload.zip') {
       for (const l of p.log) {
         const sample = p.ekspor[0] || p.impor[0];
         await client.query(
-          `INSERT INTO etl_log_perdagangan (tahun,bulan,arus,prov,basis,sumber,baris,netto_total,nilai_total,dicocokkan)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          `INSERT INTO etl_log_perdagangan (tahun,bulan,arus,prov,basis,sumber,baris,netto_total,nilai_total,dicocokkan,catatan)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
           [sample?.tahun ?? null, sample?.bulan ?? null, l.arus, p.prov, l.basis, sumber,
             l.arus === 'ekspor' ? p.ekspor.filter((r) => r.basis === l.basis).length : p.impor.filter((r) => r.basis === l.basis).length,
-            l.netto, l.nilai, l.dicocokkan]);
+            l.netto, l.nilai, l.dicocokkan, l.catatan ?? null]);
       }
     }
     await client.query('COMMIT');

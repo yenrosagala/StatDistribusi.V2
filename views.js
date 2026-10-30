@@ -757,7 +757,7 @@ function perdaganganAdmin({ stage = null, ringkas = null, log = [], periode = []
         </tr></thead>
         <tbody>
           <tr><td>Jumlah baris</td><td>${p.ekspor}</td><td>${p.impor}</td>
-            <td>${(p.validasi || []).map((v) => `${escapeHtml(v.arus)}/${escapeHtml(v.basis)}: ${v.dicocokkan ? 'cocok' : 'TIDAK COCOK'}`).join('<br>') || '-'}</td></tr>
+            <td>${(p.validasi || []).map((v) => `${escapeHtml(v.arus)}/${escapeHtml(v.basis)}: ${v.catatan ? escapeHtml(v.catatan) : (v.dicocokkan ? 'cocok' : 'TIDAK COCOK')}`).join('<br>') || '-'}</td></tr>
         </tbody>
       </table>
     </div>
@@ -779,7 +779,7 @@ function perdaganganAdmin({ stage = null, ringkas = null, log = [], periode = []
       <td>${escapeHtml(String(r.bulan))}/${escapeHtml(String(r.tahun))}</td>
       <td>${escapeHtml(r.arus)}</td><td>${escapeHtml(r.prov)}</td><td>${escapeHtml(r.basis)}</td>
       <td>${escapeHtml(String(r.baris))}</td>
-      <td>${r.dicocokkan ? 'cocok' : 'tidak cocok'}</td>
+      <td>${r.catatan ? escapeHtml(r.catatan) : (r.dicocokkan ? 'cocok' : 'tidak cocok')}</td>
       <td>${escapeHtml(String(r.loaded_at || '').slice(0, 19).replace('T', ' '))}</td>
     </tr>`).join('')}</tbody>
   </table></div>` : '<div class="alert alert-info">Belum ada unggahan.</div>'}

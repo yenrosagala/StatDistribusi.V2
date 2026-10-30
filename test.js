@@ -751,3 +751,66 @@ test('port codes are rendered with names from the master file', () => {
   assert.ok(berisi.includes('Nilai impor naik.'), 'teks narasi tampil');
   assert.ok(berisi.includes('AI Narrative — Gemini'), 'sumber narasi tampil');
 });
+test('parsePerdaganganZip membaca ekspor Excel sama seperti DBF', async () => {
+  const XLSX = await import('xlsx');
+  const { parsePerdaganganZip } = await import('./etl-perdagangan.js');
+  const buku = (header, baris) => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...baris]), 'detail');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  };
+  const ekspor = buku(
+    ['YEAR', 'MTH', 'KODE_HS', 'HS2', 'PEL_MUAT', 'PROVPOD', 'PROVORIG', 'NGRTUJUAN',
+      'NEGARA', 'PELABUHAN', 'NETTO', 'FOB', 'KETERANGAN'],
+    [['2026', '02', '03048700', '03', 'IDTPE', '94', '9471', 'US', '411', '35563', 9940.91, 82333.5, 'NonMigas']],
+  );
+  const impor = buku(
+    ['TIPE', 'JENIS', 'HS', 'HS2', 'K_NEGARA', 'NEG_ASAL', 'NM_NEGARA', 'K_PELB', 'PEL_BONG',
+      'NM_PELABUH', 'KPPBC', 'NAMA_KPPBC', 'PROV_KPPBC', 'NM_PROV_BC', 'B0226', 'N0226'],
+    [['M', 'NM', '84311029', '84', '122', 'SG', 'SINGAPORE', '31434', 'IDCGK',
+      'SOEKARNO-HATTA (U)', '120900', 'KPPBC BIAK', '94', 'PAPUA', 1.01, 520.66]],
+  );
+  const hasil = parsePerdaganganZip([
+    { name: '94_Atap__ekspor_2602_PROVORIG.xlsx', buffer: ekspor },
+    { name: '94_impor_kppbc_0226.xlsx', buffer: impor },
+  ]);
+  const papua = hasil.find((p) => p.kode === '94');
+  assert.equal(papua.ekspor.length, 1, 'satu baris ekspor');
+  assert.equal(papua.impor.length, 1, 'satu baris impor');
+  const e = papua.ekspor[0];
+  assert.equal(e.prov, 'Papua');
+  assert.equal(e.tahun, 2026);
+  assert.equal(e.bulan, 2);
+  assert.equal(e.fob, 82333.5);
+  assert.equal(e.negara_iso2, 'US');
+  assert.equal(e.pelabuhan, '35563');
+  const i = papua.impor[0];
+  assert.equal(i.cif, 520.66, 'kolom N<MMYY> = nilai');
+  assert.equal(i.netto, 1.01, 'kolom B<MMYY> = netto');
+  assert.equal(i.tahun, 2026);
+  assert.equal(i.bulan, 2);
+  assert.ok(papua.warnings.some((w) => w.includes('tanpa berkas kontrol')),
+    'Excel tanpa berkas kontrol dilaporkan');
+  assert.equal(papua.log.length, 2, 'riwayat unggahan tercatat per arus');
+});
+
+test('parsePerdaganganZip memilih DBF bila satu ZIP memuat DBF dan Excel', async () => {
+  const { parsePerdaganganZip } = await import('./etl-perdagangan.js');
+  // DBF tiruan: header + 1 field 'YEAR' sepanjang 4, 0 record.
+  const dbf = Buffer.alloc(32 + 32 + 1);
+  dbf.writeUInt32LE(0, 4);          // recordCount = 0
+  dbf.writeUInt16LE(32 + 32 + 1, 8);
+  dbf.writeUInt16LE(1 + 4, 10);
+  dbf.write('YEAR', 32, 'ascii');
+  dbf[43] = 0x43;                    // 'C'
+  dbf[48] = 4;                       // panjang field
+  dbf[32 + 32] = 0x0d;
+  const hasil = parsePerdaganganZip([
+    { name: '94_Atap__ekspor_2602_PROVORIG.xlsx', buffer: Buffer.from('bukan xlsx') },
+    { name: '94_Atap__ekspor_2602_PROVORIG.dbf', buffer: dbf },
+  ]);
+  const papua = hasil.find((p) => p.kode === '94');
+  // Bila xlsx dipakai, pembacaan akan gagal; DBF kosong -> tanpa baris, tanpa error.
+  assert.equal(papua.ekspor.length, 0);
+  assert.ok(!papua.warnings.some((w) => w.includes('Excel')), 'bukan jalur Excel');
+});
