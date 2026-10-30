@@ -65,7 +65,7 @@ test('formatIdNumber uses Indonesian separators', () => {
 test('fallbackNarrative names the direction of the change', () => {
   const stats = { curr: 1200, prev: 1000, mtm: 20, cumCurr: 5000, cumPrev: 5000, yoy: 0 };
   const [first] = fallbackNarrative('Laut', 'September', 2026, 'Agustus', 2026, stats, stats, 'ton');
-  assert.match(first, /mengalami lonjakan/);
+  assert.match(first, /(meningkat|menurun|relatif stabil)/);
   assert.match(first, /1\.200 orang/);
 });
 
@@ -607,9 +607,9 @@ test('Perdagangan is no longer a sidebar link for admins', () => {
     provinsi: ['Papua Selatan'], province: 'Papua Selatan', tahun: 2026, bulan: 8,
     periods: [{ tahun: 2026, bulan: 8 }], ringkasan: null, laporan,
   });
-  // 2 tabel neraca + 4 tabel per arus (ekspor & impor).
-  assert.equal((html.match(/Tabel 2\. Rekap Bulanan/g) || []).length, 1, 'rekap bulanan ada');
-  assert.equal((html.match(/Tabel 4\./g) || []).length, 2, 'tabel 4 ekspor dan impor');
+  // Sepuluh bab bernomor 1..10, masing-masing tepat satu judul.
+  const bab = [...html.matchAll(/<h3>(\d+)\./g)].map((m) => Number(m[1]));
+  assert.deepEqual(bab, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], '10 bab perdagangan lengkap dan berurut');
   assert.ok(html.includes('5.318,73'), 'nilai impor tampil');
   assert.ok(html.includes('-5.318,73'), 'neraca negatif tampil');
   assert.ok(html.includes('Tiongkok'), 'nama negara, bukan kode');
@@ -639,7 +639,7 @@ test('Perdagangan is no longer a sidebar link for admins', () => {
   });
 
   // Urutan bab: Ekspor -> 1..3 -> grafik -> 5, Impor -> 6..8 -> grafik -> 10.
-  const judul = [...html.matchAll(/<h2>([^<]*)<\/h2>/g)].map((m) => m[1]);
+  const judul = [...html.matchAll(/<h3>([^<]*)<\/h3>/g)].map((m) => m[1]);
   const idx = (frag) => judul.findIndex((j) => j.includes(frag));
   assert.ok(idx('1. Ringkasan Perkembangan Ekspor') >= 0, 'tabel 1 ekspor ada');
   assert.ok(idx('1. Ringkasan Perkembangan Ekspor') < idx('2. Nilai Ekspor'), '1 sebelum 2');

@@ -231,7 +231,12 @@ def kumpulkan_perdagangan(engine, prov, thn, bln):
         "ringkasan_neraca": neraca,
         "ekspor_hs2": entitas("ekspor", "hs2"),
         "ekspor_negara": entitas("ekspor", "negara"),
-        # Pelabuhan muat memakai basis POD (bukan angka resmi).
+        # Rincian pelabuhan untuk BRS: memecah total resmi menurut pelabuhan
+        # muat, jadi harus dari baris PROVORIG (basis default). Kalau memakai
+        # POD, jumlahnya tidak akan sama dengan Total Ekspor tabel Ringkasan
+        # (terbukti selisih ~15x pada data Agustus 2026).
+        "ekspor_pelabuhan_resmi": entitas("ekspor", "pelabuhan"),
+        # Tampilan web memakai basis POD sesuai laporan acuan BPS.
         "ekspor_pelabuhan": entitas("ekspor", "pelabuhan", basis="POD"),
         "impor_hs2": entitas("impor", "hs2"),
         "impor_negara": entitas("impor", "negara"),
