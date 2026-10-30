@@ -2077,15 +2077,30 @@ function reportScript(configs) {
   CFG.forEach(function (c) {
     var el = document.getElementById(c.id);
     if (!el) return;
+    // Dua bentuk konfigurasi:
+    //  a) c.series {labels, prevYear, prev, year, cur} -> garis tahun lalu vs tahun ini
+    //  b) c.labels + c.datasets                      -> generik (tipe dari c.type)
+    var tipe = c.type || 'line';
+    var labels = c.labels || (c.series && c.series.labels) || [];
+    var datasets;
+    if (c.datasets) {
+      datasets = c.datasets.map(function (d) {
+        var warna = d.color || '#ED7D31';
+        return tipe === 'line'
+          ? { label: d.label, data: d.data, borderColor: warna, backgroundColor: warna, pointRadius: 4, borderWidth: 4, tension: 0.2 }
+          : { label: d.label, data: d.data, backgroundColor: warna, borderColor: warna, borderWidth: 1 };
+      });
+    } else if (c.series) {
+      datasets = [
+        { label: String(c.series.prevYear), data: c.series.prev, borderColor: c.prevColor, backgroundColor: c.prevColor, pointRadius: 4, borderWidth: 4, tension: 0.2 },
+        { label: String(c.series.year), data: c.series.cur, borderColor: c.curColor, backgroundColor: c.curColor, pointRadius: 4, borderWidth: 4, tension: 0.2 }
+      ];
+    } else {
+      return;
+    }
     new Chart(el, {
-      type: 'line',
-      data: {
-        labels: c.series.labels,
-        datasets: [
-          { label: String(c.series.prevYear), data: c.series.prev, borderColor: c.prevColor, backgroundColor: c.prevColor, pointRadius: 4, borderWidth: 4, tension: 0.2 },
-          { label: String(c.series.year), data: c.series.cur, borderColor: c.curColor, backgroundColor: c.curColor, pointRadius: 4, borderWidth: 4, tension: 0.2 }
-        ]
-      },
+      type: tipe,
+      data: { labels: labels, datasets: datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -2096,11 +2111,17 @@ function reportScript(configs) {
           y: { beginAtZero: false, title: { display: true, text: c.axis }, ticks: { callback: function (v) { return nf.format(v); } } }
         },
         plugins: {
-          legend: { display: false }, // year legend now lives in the table header
-          tooltip: { callbacks: { label: function (ctx) { return 'Tahun ' + ctx.dataset.label + ': ' + nf.format(ctx.parsed.y) + c.unit; } } }
+          // Grafik dua tahun: legenda tahun sudah ada di header tabel.
+          legend: { display: !!c.datasets, position: 'bottom' },
+          tooltip: { callbacks: { label: function (ctx) {
+            return (c.datasets ? ctx.dataset.label + ': ' : 'Tahun ' + ctx.dataset.label + ': ')
+              + nf.format(ctx.parsed.y) + (c.unit || '');
+          } } }
         }
       },
-      plugins: [monthLabelPlugin(c.monthIndex, c.unit, function (v) { return nf.format(v); })]
+      plugins: (c.monthIndex === undefined || c.monthIndex === null)
+        ? []
+        : [monthLabelPlugin(c.monthIndex, c.unit, function (v) { return nf.format(v); })]
     });
   });
 })();
