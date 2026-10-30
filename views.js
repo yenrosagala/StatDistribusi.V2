@@ -204,8 +204,12 @@ export function landingPage({ user, pari = {}, trans = {}, dagang = {}, aset = {
   const card = (o) => {
     const foto = aset[o.title];
     const kelas = foto ? ' landing-card--foto' : '';
+    // Semua properti latar ditulis inline: glass.css memuat shorthand
+    // `background:` pada .landing-card sehingga background-size dari stylesheet
+    // ter-reset jadi auto dan gambar tampil ukuran aslinya.
     const gaya = foto
-      ? ` style="background-image:linear-gradient(rgba(15,23,42,.55),rgba(15,23,42,.82)),url('${escapeHtml(foto)}')"`
+      ? ` style="background-image:linear-gradient(rgba(15,23,42,.55),rgba(15,23,42,.82)),url('${escapeHtml(foto)}');`
+        + 'background-size:cover;background-position:center;background-repeat:no-repeat"'
       : '';
     return `<a class="landing-card${kelas}" href="${o.href}"${gaya}>
     <span class="landing-icon" aria-hidden="true">${o.icon}</span>
