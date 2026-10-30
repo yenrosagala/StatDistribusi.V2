@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
@@ -840,6 +841,51 @@ def _grafik_perdagangan(data, thn):
     return hasil
 
 
+def _idml_tautan_relatif(idml_bytes, template_dir, warnings):
+    """Tanam gambar template (Cover, foto, dll.) dari folder Links/ ke dalam .idml.
+
+    Template menautkan foto bawaan ke path absolut 'file:E:/...' sehingga di mesin
+    lain menjadi missing link. Aset bermuatan data (qrcode/grafik/infografis)
+    sengaja tidak ikut di sini -- itu hanya masuk lewat unggahan pengguna.
+    """
+    import zipfile
+
+    from modules.indesign_export import _link_images_relative
+
+    with zipfile.ZipFile(io.BytesIO(idml_bytes)) as z:
+        order = z.namelist()
+        files = {n: z.read(n) for n in order}
+    jumlah = _link_images_relative(files, order, template_dir, warnings)
+    if not jumlah:
+        return idml_bytes, 0
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for n in order:
+            z.writestr(n, files[n])
+    return buf.getvalue(), jumlah
+
+
+def _gambar_tanpa_isi(idml_bytes):
+    """Nama berkas gambar yang masih missing link (blok <Image> tanpa <Contents>)."""
+    import zipfile
+    from urllib.parse import unquote
+
+    kurang = set()
+    with zipfile.ZipFile(io.BytesIO(idml_bytes)) as z:
+        for n in z.namelist():
+            if not n.endswith(".xml"):
+                continue
+            teks = z.read(n).decode("utf-8", "ignore")
+            for m in re.finditer(r"<Image\b.*?</Image>", teks, re.S):
+                blok = m.group(0)
+                if "<Contents>" in blok:
+                    continue
+                uri = re.search(r'LinkResourceURI="([^"]*)"', blok)
+                if uri:
+                    kurang.add(unquote(uri.group(1)).rsplit("/", 1)[-1])
+    return sorted(kurang)
+
+
 def build_idml_exim(payload):
     """Isi template BRS Ekspor-Impor dengan data dari Supabase.
 
@@ -872,6 +918,12 @@ def build_idml_exim(payload):
 
     warnings = []
     idml_bytes, warnings = isi_template_exim(tpl.read_bytes(), data, label_dari_kode, warnings)
+
+    # Foto/kover bawaan template ditautkan ke path absolut di luar paket; tanam
+    # isinya supaya tidak jadi missing link di mesin lain.
+    idml_bytes, jumlah = _idml_tautan_relatif(idml_bytes, folder, warnings)
+    if jumlah:
+        warnings.append(f"{jumlah} gambar bawaan template ditanam ke dalam dokumen.")
 
     # QR: template punya frame QR (dua tempat); tanam isi unggahannya.
     qr_bytes, qr_name = _asset(payload, "qr")
@@ -923,6 +975,17 @@ def build_idml_exim(payload):
     if (payload.get("nomor") or "").strip() or (payload.get("tanggal") or "").strip():
         warnings.append("Nomor BRS dan tanggal rilis belum bisa dicetak: template BRS "
                         "Exim belum punya kolom untuk keduanya.")
+    # Laporkan gambar yang masih kosong supaya tidak diam-diam hilang.
+    kurang = _gambar_tanpa_isi(idml_bytes)
+    qr_kosong = [k for k in kurang if "qrcode" in k.lower()]
+    lain = [k for k in kurang if "qrcode" not in k.lower()]
+    if qr_kosong:
+        warnings.append("Frame QR kosong: tidak ada kode QR yang diunggah. "
+                        "Unggah berkas QR di kartu unduh agar ikut tertanam.")
+    if lain:
+        warnings.append("Gambar template berikut belum tertanam (berkasnya tidak ada "
+                        "di folder Links/ template): " + ", ".join(lain))
+
     nama = f"BRS_Exim_{prov.replace(' ', '_')}_{bln}_{thn}.idml"
     paket = paket_zip(idml_bytes, nama, template_dir=folder)
     if tambahan:
