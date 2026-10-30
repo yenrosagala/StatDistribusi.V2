@@ -1994,30 +1994,39 @@ function wisnusCard(report, configs) {
       datasets: [{ label: 'Jumlah perjalanan', data: tujuan.map((t) => t.jumlah), color: '#ED7D31' }],
     });
   }
+
+  // Tabel nilai bulanan: satu baris per bulan, dua kolom tahun (seperti valueGrid
+  // pada kartu indikator).
+  const bulanTabel = [...new Set([...lalu.keys(), ...ini.keys()])].sort((a, b) => a - b)
+    .map((b) => `<tr><td>${MONTH_NAMES[b - 1]}</td>
+      <td>${lalu.has(b) ? formatIdNumber(lalu.get(b), 0) : '-'}</td>
+      <td>${ini.has(b) ? formatIdNumber(ini.get(b), 0) : '-'}</td></tr>`).join('');
+
   const baris = tujuan.map((t) => `<tr>
     <td>${escapeHtml(t.nama || t.kode)}</td>
     <td>${formatIdNumber(t.jumlah, 0)}</td>
     <td>${formatIdNumber(t.peran, 2)}</td></tr>`).join('');
 
-  return `<section class="dashboard-card">
-  <div class="section-header"><h2>Kunjungan Wisatawan Nusantara (Wisnus)</h2>
-    <span class="side-note">Sumber: sheet "Series Home KabKota" dan "Series Tujuan KabKota".</span></div>
-  <div class="metric-grid">
-    ${kpi(`Kunjungan ${MONTH_NAMES[bulan - 1]} ${tahunIni}`, formatIdNumber(kini, 0),
-      `month-to-month ${formatPct(pct(kini, sblm))}`)}
-    ${kpi(`Kumulatif Januari\u2013${MONTH_NAMES[bulan - 1]} ${tahunIni}`, formatIdNumber(w.totalKum || 0, 0),
-      'menurut kab/kota tujuan')}
-    ${kpi(`Year-on-year ${MONTH_NAMES[bulan - 1]}`, formatPct(pct(kini, tahunLaluBulan)), 'dibanding tahun lalu')}
-  </div>
-  <h3>${escapeHtml(judulSeri)}</h3>
-  <div class="chart-frame" style="height:340px"><canvas id="wisnus-seri"></canvas></div>
-  <h3>${escapeHtml(judulTujuan)}</h3>
-  <div class="chart-frame" style="height:340px"><canvas id="wisnus-tujuan"></canvas></div>
-  <h3>Kabupaten/Kota Tujuan Utama, Januari\u2013${MONTH_NAMES[bulan - 1]} ${tahunIni}</h3>
+  // Struktur kartu sengaja disamakan dengan kartu indikator YoY:
+  //   card-header -> ai-note -> table-scroll -> chart-frame -> table-scroll
+  return `<section class="dashboard-card report-card">
+  <div class="card-header"><h3>Kunjungan Wisatawan Nusantara (Wisnus)</h3>
+    <button type="button" class="btn btn-ghost" style="width:auto;font-size:12px;padding:6px 10px" onclick="window.unduhGrafik('wisnus-seri', 'kunjungan-wisnus.png')">&#128229; Unduh Grafik (PNG)</button></div>
+  <div class="ai-note">Kunjungan Wisnus ${MONTH_NAMES[bulan - 1]} ${tahunIni} sebanyak <b>${formatIdNumber(kini, 0)}</b> perjalanan,
+    ${pct(kini, sblm) === null ? 'tanpa pembanding bulan sebelumnya' : `berubah ${formatPct(pct(kini, sblm))} dibanding ${MONTH_NAMES[bulan - 2] || ''} ${tahunIni}`};
+    year-on-year ${formatPct(pct(kini, tahunLaluBulan))}. Kumulatif Januari–${MONTH_NAMES[bulan - 1]} ${tahunIni}
+    mencapai <b>${formatIdNumber(w.totalKum || 0, 0)}</b> perjalanan menurut kab/kota tujuan.</div>
   <div class="table-scroll"><table class="data-table">
-    <thead><tr><th>Kabupaten/Kota</th><th>Jumlah Perjalanan</th><th>% Peran</th></tr></thead>
+    <thead><tr><th>Bulan</th><th>${tahunLalu}</th><th>${tahunIni}</th></tr></thead>
+    <tbody>${bulanTabel}</tbody>
+  </table></div>
+  <div class="chart-frame" style="height:340px"><canvas id="wisnus-seri"></canvas></div>
+  <div class="table-scroll"><table class="data-table">
+    <thead><tr><th>Kabupaten/Kota Tujuan</th><th>Jumlah Perjalanan</th><th>% Peran</th></tr></thead>
     <tbody>${baris || '<tr><td colspan="3">Belum ada data Wisnus untuk periode ini.</td></tr>'}</tbody>
   </table></div>
+  <h3>${escapeHtml(judulTujuan)}</h3>
+  <div class="chart-frame" style="height:340px"><canvas id="wisnus-tujuan"></canvas></div>
 </section>`;
 }
 
