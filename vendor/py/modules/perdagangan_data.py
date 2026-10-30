@@ -148,6 +148,23 @@ def _per_entitas(engine, arus, prov, thn, bln, dimensi, kumulatif=False, basis=N
     return [{"kode": str(r["kode"]), "nilai": _ribu(r["nilai"])} for _, r in df.iterrows()]
 
 
+def _ada_data(engine, arus, prov, thn, bln_awal, bln_akhir, basis=None):
+    """True bila ada minimal satu baris pada rentang bulan tersebut.
+
+    Dipakai membedakan "tidak ada perdagangan" (0,00) dari "data tidak
+    tersedia" (-). Tanpa ini, periode tanpa data akan tercetak sebagai 0,00 dan
+    terbaca sebagai realisasi nol oleh pembaca rilis.
+    """
+    tabel = "fact_ekspor" if arus == "ekspor" else "fact_impor"
+    b = basis or (BASIS_EKSPOR if arus == "ekspor" else BASIS_IMPOR)
+    df = _query(engine, f"""
+        SELECT 1 AS ada FROM {tabel}
+        WHERE prov=:prov AND basis='{b}' AND tahun=:thn AND bulan BETWEEN :b1 AND :b2
+        LIMIT 1
+    """, prov=prov, thn=int(thn), b1=int(bln_awal), b2=int(bln_akhir))
+    return not df.empty
+
+
 def _bulan_tersedia(engine, prov, thn, bln):
     """Bulan (1..12) yang punya data pada tahun itu, untuk deteksi data bolong."""
     df = _query(engine, """
@@ -217,13 +234,38 @@ def kumpulkan_perdagangan(engine, prov, thn, bln):
         })
 
     def entitas(arus, dimensi, basis=None):
-        """Entitas bulan ini + kumulatifnya (untuk baris Total)."""
+        """Entitas + seluruh pembandingnya untuk satu dimensi.
+
+        Setiap baris memuat: nilai bulan ini, bulan lalu, bulan yang sama tahun
+        lalu, kumulatif tahun ini, dan kumulatif tahun lalu.
+        """
+        def ambil(thn_, bln_, kumulatif=False):
+            return {r["kode"]: r["nilai"] for r in _per_entitas(
+                engine, arus, prov, thn_, bln_, dimensi,
+                kumulatif=kumulatif, basis=basis)}
+
         bulan = _per_entitas(engine, arus, prov, thn, bln, dimensi, basis=basis)
-        kum = _per_entitas(engine, arus, prov, thn, bln, dimensi, kumulatif=True, basis=basis)
-        kum_by = {r["kode"]: r["nilai"] for r in kum}
+        prev = ambil(prev_thn, prev_bln)
+        last = ambil(last_thn, bln)
+        kum = ambil(thn, bln, kumulatif=True)
+        kum_last = ambil(last_thn, bln, kumulatif=True)
         for r in bulan:
-            r["kum"] = kum_by.get(r["kode"], 0.0)
+            k = r["kode"]
+            r["prev"] = prev.get(k, 0.0)
+            r["last"] = last.get(k, 0.0)
+            r["kum"] = kum.get(k, 0.0)
+            r["kum_last"] = kum_last.get(k, 0.0)
         return bulan
+
+    def ketersediaan(arus):
+        """Periode mana yang benar-benar punya data (bukan sekadar nol)."""
+        return {
+            "now": _ada_data(engine, arus, prov, thn, bln, bln),
+            "prev": _ada_data(engine, arus, prov, prev_thn, prev_bln, prev_bln),
+            "last": _ada_data(engine, arus, prov, last_thn, bln, bln),
+            "kum": _ada_data(engine, arus, prov, thn, 1, bln),
+            "kum_last": _ada_data(engine, arus, prov, last_thn, 1, bln),
+        }
 
     return {
         "ringkasan_ekspor": ekspor_ring,
@@ -242,6 +284,9 @@ def kumpulkan_perdagangan(engine, prov, thn, bln):
         "impor_negara": entitas("impor", "negara"),
         "meta": {
             "bulan_tersedia": _bulan_tersedia(engine, prov, thn, bln),
+            # Periode pembanding yang benar-benar ada datanya, per arus.
+            "ketersediaan": {"ekspor": ketersediaan("ekspor"),
+                             "impor": ketersediaan("impor")},
             "prov": prov, "thn": thn, "bln": bln,
             "bln_nama": BULAN[bln], "bln_singkat": SINGKAT[bln],
             "prev_bln_nama": BULAN[prev_bln], "prev_thn": prev_thn,

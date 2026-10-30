@@ -28,6 +28,7 @@ export const EXPORT_MIME = {
   'idml-transport': 'application/zip',
   'idml-pariwisata': 'application/zip',
   'idml-exim': 'application/zip',
+  'xlsx-perdagangan': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 
 export function exportFileName(kind, payload) {
@@ -36,6 +37,7 @@ export function exportFileName(kind, payload) {
   const prov = String(payload.prov || 'Papua').replace(/\s+/g, '_');
   if (kind === 'xlsx-transport') return `Tabel_Transportasi_${prov}_${period}.xlsx`;
   if (kind === 'xlsx-pariwisata') return `Tabel_Pariwisata_${prov}_${period}.xlsx`;
+  if (kind === 'xlsx-perdagangan') return `Tabel_Perdagangan_${prov}_${period}.xlsx`;
   if (kind === 'docx') return `Master_Laporan_Transportasi_${prov}_${period}.docx`;
   if (kind === 'idml-exim') return `BRS_Exim_${prov}_${period}.zip`;
   if (kind === 'idml-transport') return `BRS_Transportasi_${prov}_${period}.zip`;

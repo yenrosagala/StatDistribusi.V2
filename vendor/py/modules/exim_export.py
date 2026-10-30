@@ -213,38 +213,59 @@ def _ringkasan(data, jenis):
             for r in (data.get(f"ringkasan_{jenis}") or [])}
 
 
-def _tulis_baris(cells, y, now, kum, total_kum, spec):
-    """Tulis satu baris: nilai bulan ini, kumulatif, dan turunannya."""
-    _tulis(cells, KOLOM_NOW, y, _angka(now))
-    _tulis(cells, KOLOM_KUM, y, _angka(kum))
-    # Pembanding bulan lalu / tahun lalu / kumulatif tahun lalu belum ada.
-    for x in (1, 2, 4):
-        _tulis(cells, x, y, KOSONG)
-    if spec.get("x_perubahan") is not None:
-        _tulis(cells, spec["x_perubahan"], y, KOSONG)
+def _pct(now, prev):
+    """Perubahan relatif (persen); None bila pembandingnya nol."""
+    try:
+        now, prev = float(now), float(prev)
+    except (TypeError, ValueError):
+        return None
+    if prev == 0:
+        return None
+    return (now - prev) / prev * 100.0
+
+
+def _tulis_baris(cells, y, v, total_kum, spec, tersedia):
+    """Tulis satu baris tabel entitas dari lima metriknya.
+
+    ``tersedia`` menandai kolom pembanding mana yang punya data. Kolom tanpa
+    data ditulis "-" supaya tidak terbaca sebagai realisasi nol.
+    """
+    _tulis(cells, 1, y, _angka(v["last"]) if tersedia["last"] else KOSONG)
+    _tulis(cells, 2, y, _angka(v["prev"]) if tersedia["prev"] else KOSONG)
+    _tulis(cells, KOLOM_NOW, y, _angka(v["now"]))
+    _tulis(cells, 4, y, _angka(v["kum_last"]) if tersedia["kum_last"] else KOSONG)
+    _tulis(cells, KOLOM_KUM, y, _angka(v["kum"]))
+
+    x_perubahan = spec.get("x_perubahan")
+    if x_perubahan is not None:
+        if not tersedia["kum_last"]:
+            _tulis(cells, x_perubahan, y, KOSONG)
+        else:
+            _tulis(cells, x_perubahan, y, _persen(_pct(v["kum"], v["kum_last"])))
+
     x_peran = spec.get("x_peran")
     if x_peran is not None:
-        peran = (kum / total_kum * 100.0) if total_kum else 0.0
+        peran = (v["kum"] / total_kum * 100.0) if total_kum else 0.0
         _tulis(cells, x_peran, y, _angka(peran))
 
 
-def _isi_ringkasan(cells, baris_data):
+def _isi_ringkasan(cells, baris_data, tersedia):
     """Tabel Ringkasan ekspor/impor: 3 baris (Total, Migas, Nonmigas)."""
     total_kum = float(baris_data[0]["kum_now"]) if baris_data else 0.0
     for i, r in enumerate(baris_data):
         y = 3 + i
-        _tulis(cells, 1, y, _angka(r["last"]))
-        _tulis(cells, 2, y, _angka(r["prev"]))
+        _tulis(cells, 1, y, _angka(r["last"]) if tersedia["last"] else KOSONG)
+        _tulis(cells, 2, y, _angka(r["prev"]) if tersedia["prev"] else KOSONG)
         _tulis(cells, 3, y, _angka(r["now"]))
-        _tulis(cells, 4, y, _angka(r["kum_last"]))
+        _tulis(cells, 4, y, _angka(r["kum_last"]) if tersedia["kum_last"] else KOSONG)
         _tulis(cells, 5, y, _angka(r["kum_now"]))
-        _tulis(cells, 6, y, _persen(r["mtm"]))
-        _tulis(cells, 7, y, _persen(r["yoy_kum"]))
+        _tulis(cells, 6, y, _persen(r["mtm"]) if tersedia["prev"] else KOSONG)
+        _tulis(cells, 7, y, _persen(r["yoy_kum"]) if tersedia["kum_last"] else KOSONG)
         peran = (float(r["kum_now"]) / total_kum * 100.0) if total_kum else 0.0
         _tulis(cells, 8, y, _angka(peran))
 
 
-def _isi_neraca(cells, data_ekspor, data_impor):
+def _isi_neraca(cells, data_ekspor, data_impor, ket):
     """Tabel Neraca: baris Ekspor, Impor, Neraca Perdagangan.
 
     Template meminta tiga arus, bukan rincian migas/nonmigas -- jadi ambil baris
@@ -263,34 +284,54 @@ def _isi_neraca(cells, data_ekspor, data_impor):
     def selisih(k):
         return ambil(e, k) - ambil(i, k)
 
+    # Neraca hanya bermakna bila kedua arus punya data pada periode itu.
+    gabung = {k: (ket["ekspor"][k] and ket["impor"][k])
+              for k in ("last", "prev", "kum_last")}
     baris = [
-        (3, {k: ambil(e, k) for k in ("last", "prev", "now", "kum_last", "kum_now")}),
-        (4, {k: ambil(i, k) for k in ("last", "prev", "now", "kum_last", "kum_now")}),
-        (5, {k: selisih(k) for k in ("last", "prev", "now", "kum_last", "kum_now")}),
+        (3, {k: ambil(e, k) for k in ("last", "prev", "now", "kum_last", "kum_now")},
+         ket["ekspor"]),
+        (4, {k: ambil(i, k) for k in ("last", "prev", "now", "kum_last", "kum_now")},
+         ket["impor"]),
+        (5, {k: selisih(k) for k in ("last", "prev", "now", "kum_last", "kum_now")},
+         gabung),
     ]
-    for y, nilai in baris:
+    for y, nilai, tersedia in baris:
         for x, k in ((1, "last"), (2, "prev"), (3, "now"), (4, "kum_last"), (5, "kum_now")):
-            _tulis(cells, x, y, _angka(nilai[k]))
-        _tulis(cells, 6, y, _angka(nilai["now"] - nilai["prev"]))
-        _tulis(cells, 7, y, _angka(nilai["kum_now"] - nilai["kum_last"]))
+            if k in ("now", "kum_now"):
+                # Nilai periode berjalan selalu dicetak.
+                _tulis(cells, x, y, _angka(nilai[k]))
+            else:
+                _tulis(cells, x, y, _angka(nilai[k]) if tersedia[k] else KOSONG)
+        _tulis(cells, 6, y,
+               _angka(nilai["now"] - nilai["prev"]) if tersedia["prev"] else KOSONG)
+        _tulis(cells, 7, y,
+               _angka(nilai["kum_now"] - nilai["kum_last"]) if tersedia["kum_last"] else KOSONG)
 
 
-def _isi_entitas(cells, spec, daftar, ringkasan, warnings, sid):
+def _isi_entitas(cells, spec, daftar, ringkasan, warnings, sid, ket):
     """Isi tabel entitas tanpa menyentuh label dan tanpa membuang entitas."""
     tersedia = {}
     for r in daftar or []:
         tersedia[_kunci_entitas(r.get("kode"))] = {
             "now": float(r.get("nilai") or 0.0),
+            "prev": float(r.get("prev") or 0.0),
+            "last": float(r.get("last") or 0.0),
             "kum": float(r.get("kum") or 0.0),
+            "kum_last": float(r.get("kum_last") or 0.0),
         }
 
     total = ringkasan.get("total") or {}
     total_kum = float(total.get("kum_now") or 0.0)
-    nilai = {}          # y -> {"now", "kum"}
+    nilai = {}          # y -> dict lima metrik
     terpakai = set()    # kode entitas yang tampil di baris tetap
 
+    METRIK = ("now", "prev", "last", "kum", "kum_last")
+
+    def kosong():
+        return {k: 0.0 for k in METRIK}
+
     def ambil(kode):
-        return tersedia.get(_kunci_entitas(kode), {"now": 0.0, "kum": 0.0})
+        return tersedia.get(_kunci_entitas(kode)) or kosong()
 
     def hitung(b):
         """Hitung satu baris non-sisa."""
@@ -302,17 +343,26 @@ def _isi_entitas(cells, spec, daftar, ringkasan, warnings, sid):
         elif "pelabuhan_ps" in b:
             kode_ps = {k for k in tersedia if k[:2] == PREFIX_PAPUA_SELATAN}
             terpakai.update(kode_ps)
-            nilai[y] = {"now": sum(tersedia[k]["now"] for k in kode_ps),
-                        "kum": sum(tersedia[k]["kum"] for k in kode_ps)}
+            nilai[y] = {m: sum(tersedia[k][m] for k in kode_ps) for m in METRIK}
         elif "dari_ringkasan" in b:
             r = ringkasan.get(str(b["dari_ringkasan"]).lower()) or {}
-            nilai[y] = {"now": float(r.get("now") or 0.0),
-                        "kum": float(r.get("kum_now") or 0.0)}
+            nilai[y] = {
+                "now": float(r.get("now") or 0.0),
+                "prev": float(r.get("prev") or 0.0),
+                "last": float(r.get("last") or 0.0),
+                "kum": float(r.get("kum_now") or 0.0),
+                "kum_last": float(r.get("kum_last") or 0.0),
+            }
         elif b.get("total"):
-            nilai[y] = {"now": float(total.get("now") or 0.0), "kum": total_kum}
+            nilai[y] = {
+                "now": float(total.get("now") or 0.0),
+                "prev": float(total.get("prev") or 0.0),
+                "last": float(total.get("last") or 0.0),
+                "kum": total_kum,
+                "kum_last": float(total.get("kum_last") or 0.0),
+            }
         elif "subtotal" in b:
-            nilai[y] = {k: sum(nilai[yy][k] for yy in b["subtotal"])
-                        for k in ("now", "kum")}
+            nilai[y] = {m: sum(nilai[yy][m] for yy in b["subtotal"]) for m in METRIK}
 
     # Baris "sisa" boleh menunjuk induk yang didefinisikan sesudahnya (mis. baris
     # Total di bawah "Lainnya"), jadi dihitung pada lintasan kedua.
@@ -322,9 +372,8 @@ def _isi_entitas(cells, spec, daftar, ringkasan, warnings, sid):
     for b in spec["baris"]:
         if "sisa" in b:
             induk = nilai[b["sisa"]["induk"]]
-            kurang = {k: sum(nilai[yy][k] for yy in b["sisa"]["kurangi"])
-                      for k in ("now", "kum")}
-            nilai[b["y"]] = {k: induk[k] - kurang[k] for k in ("now", "kum")}
+            kurang = {m: sum(nilai[yy][m] for yy in b["sisa"]["kurangi"]) for m in METRIK}
+            nilai[b["y"]] = {m: induk[m] - kurang[m] for m in METRIK}
             if nilai[b["y"]]["now"] < 0 or nilai[b["y"]]["kum"] < 0:
                 warnings.append(
                     f"{sid}: baris {b['y']} bernilai negatif "
@@ -332,8 +381,7 @@ def _isi_entitas(cells, spec, daftar, ringkasan, warnings, sid):
                     "periode ini.")
 
     for b in spec["baris"]:
-        v = nilai[b["y"]]
-        _tulis_baris(cells, b["y"], v["now"], v["kum"], total_kum, spec)
+        _tulis_baris(cells, b["y"], nilai[b["y"]], total_kum, spec, ket)
 
     # Entitas di luar daftar tetap tidak hilang: semuanya melebur ke "Lainnya".
     dilipat = set(tersedia) - terpakai
@@ -351,6 +399,14 @@ def isi_template_exim(template_bytes, data, label_dari_kode=None, warnings=None)
     """
     warnings = list(warnings or [])
     data = data or {}
+
+    def ketersediaan(arus):
+        """Kolom pembanding mana yang punya data; default anggap ada."""
+        k = ((data.get("meta") or {}).get("ketersediaan") or {}).get(arus) or {}
+        return {nama: bool(k.get(nama, True))
+                for nama in ("prev", "last", "kum_last")}
+
+    ket = {"ekspor": ketersediaan("ekspor"), "impor": ketersediaan("impor")}
 
     with zipfile.ZipFile(io.BytesIO(template_bytes)) as zf:
         order = zf.namelist()
@@ -372,22 +428,32 @@ def isi_template_exim(template_bytes, data, label_dari_kode=None, warnings=None)
 
     for sid, jenis in TABEL_RINGKASAN.items():
         proses(sid, lambda cells, jenis=jenis:
-               _isi_ringkasan(cells, data.get(f"ringkasan_{jenis}") or []))
+               _isi_ringkasan(cells, data.get(f"ringkasan_{jenis}") or [], ket[jenis]))
 
     proses(SID_NERACA, lambda cells:
            _isi_neraca(cells, data.get("ringkasan_ekspor") or [],
-                       data.get("ringkasan_impor") or []))
+                       data.get("ringkasan_impor") or [], ket))
 
     for sid, spec in SPESIFIKASI.items():
         proses(sid, lambda cells, sid=sid, spec=spec:
                _isi_entitas(cells, spec, data.get(spec["kunci"]) or [],
-                            _ringkasan(data, spec["ringkasan"]), warnings, sid))
+                            _ringkasan(data, spec["ringkasan"]), warnings, sid,
+                            ket[spec["ringkasan"]]))
 
-    # Kolom pembanding dibiarkan "-" karena memang belum ada di basis data.
-    if (data.get("meta") or {}).get("bln"):
+    # Laporkan kolom mana yang kosong karena datanya memang tidak ada.
+    kosong = []
+    for arus, label in (("ekspor", "Ekspor"), ("impor", "Impor")):
+        k = ket[arus]
+        if not k["last"]:
+            kosong.append(f"{label}: bulan yang sama tahun lalu")
+        if not k["prev"]:
+            kosong.append(f"{label}: bulan lalu")
+        if not k["kum_last"]:
+            kosong.append(f"{label}: kumulatif tahun lalu")
+    if kosong:
         warnings.append(
-            'Kolom bulan lalu, tahun lalu, dan kumulatif tahun lalu diisi "-": '
-            "angka pembanding itu belum tersedia di basis data.")
+            'Kolom pembanding yang datanya tidak tersedia diisi "-": '
+            + "; ".join(kosong) + ".")
 
     keluar = io.BytesIO()
     with zipfile.ZipFile(keluar, "w", zipfile.ZIP_DEFLATED) as z:

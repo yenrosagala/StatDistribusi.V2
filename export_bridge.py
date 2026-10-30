@@ -612,6 +612,121 @@ NEGARA_LABEL = {
 }
 
 
+def build_xlsx_perdagangan(payload):
+    """Tabel-tabel BRS Ekspor-Impor sebagai Excel, satu sheet per tabel.
+
+    Isinya sama dengan yang dicetak ke .idml: entitas di luar daftar tetap
+    template tetap muncul di sini (tidak dilebur), supaya tabel ini bisa dipakai
+    memeriksa angka. Kolom pembanding yang datanya tidak ada diisi "-".
+    """
+    import pandas as pd
+
+    from modules.database import get_engine
+    from modules.etl_engine import MONTH_NAMES
+    from modules.perdagangan_data import kumpulkan_perdagangan
+
+    prov, thn = payload["prov"], int(payload["thn"])
+    bln_raw = payload["bln"]
+    bln = int(bln_raw) if str(bln_raw).isdigit() else MONTH_NAMES.index(bln_raw) + 1
+    data = kumpulkan_perdagangan(get_engine(), prov, thn, bln)
+    if not (data.get("ringkasan_ekspor") or data.get("ringkasan_impor")):
+        raise SystemExit(f"Tidak ada data perdagangan untuk {prov} {bln} {thn}.")
+
+    ket = (data.get("meta") or {}).get("ketersediaan") or {}
+
+    def kolom(arus):
+        k = ket.get(arus) or {}
+        return (k.get("last", True), k.get("prev", True), k.get("kum_last", True))
+
+    prev_bln, prev_thn = (bln - 1, thn) if bln > 1 else (12, thn - 1)
+    kepala = [
+        "Uraian",
+        f"{MONTH_NAMES[bln - 1]} {thn - 1}",
+        f"{MONTH_NAMES[prev_bln - 1]} {thn}",
+        f"{MONTH_NAMES[bln - 1]} {thn}",
+        f"Jan-{MONTH_NAMES[bln - 1][:3]} {thn - 1}",
+        f"Jan-{MONTH_NAMES[bln - 1][:3]} {thn}",
+        "% Peran",
+    ]
+
+    def angka(v):
+        return None if v is None else round(float(v), 2)
+
+    def baris_entitas(arus, daftar, total_kum):
+        ada_last, ada_prev, ada_kum_last = kolom(arus)
+        out = []
+        for r in daftar or []:
+            kum = float(r.get("kum") or 0.0)
+            out.append([
+                str(r.get("kode", "")),
+                angka(r.get("last")) if ada_last else "-",
+                angka(r.get("prev")) if ada_prev else "-",
+                angka(r.get("nilai")),
+                angka(r.get("kum_last")) if ada_kum_last else "-",
+                angka(kum),
+                round(kum / total_kum * 100.0, 2) if total_kum else 0.0,
+            ])
+        return out
+
+    def total_kum(arus):
+        ring = {str(r.get("label", "")).lower(): r
+                for r in data.get(f"ringkasan_{arus}") or []}
+        return float((ring.get("total") or {}).get("kum_now") or 0.0)
+
+    sheets = {}
+
+    for arus, judul in (("ekspor", "Ekspor"), ("impor", "Impor")):
+        ada_last, ada_prev, ada_kum_last = kolom(arus)
+        ring = data.get(f"ringkasan_{arus}") or []
+        if ring:
+            isi = [[("Total " + judul) if str(r.get("label", "")).lower() == "total" else r.get("label", ""),
+                    angka(r.get("last")) if ada_last else "-",
+                    angka(r.get("prev")) if ada_prev else "-",
+                    angka(r.get("now")),
+                    angka(r.get("kum_last")) if ada_kum_last else "-",
+                    angka(r.get("kum_now")),
+                    round(float(r["kum_now"]) / total_kum(arus) * 100.0, 2)
+                    if total_kum(arus) else 0.0] for r in ring]
+            sheets[f"Ringkasan {judul}"] = isi
+        for kunci, label in (("hs2", "HS 2 Digit"), ("negara", "Negara"),
+                             ("pelabuhan_resmi", "Pelabuhan Muat")):
+            daftar = data.get(f"{arus}_{kunci}")
+            if daftar:
+                sheets[f"{judul} {label}"[:31]] = baris_entitas(
+                    arus, daftar, total_kum(arus))
+
+    e = (data.get("ringkasan_ekspor") or [{}])[0]
+    i = (data.get("ringkasan_impor") or [{}])[0]
+    ada_e, ada_i = kolom("ekspor"), kolom("impor")
+
+    def selisih(k):
+        return float(e.get(k) or 0.0) - float(i.get(k) or 0.0)
+
+    neraca = []
+    for label, ambil, ada in (
+            ("Ekspor", lambda k: float(e.get(k) or 0.0), ada_e),
+            ("Impor", lambda k: float(i.get(k) or 0.0), ada_i),
+            ("Neraca Perdagangan", selisih, tuple(a and b for a, b in zip(ada_e, ada_i)))):
+        neraca.append([
+            label,
+            angka(ambil("last")) if ada[0] else "-",
+            angka(ambil("prev")) if ada[1] else "-",
+            angka(ambil("now")),
+            angka(ambil("kum_last")) if ada[2] else "-",
+            angka(ambil("kum_now")),
+            "selisih",
+        ])
+    sheets["Neraca"] = neraca
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        for nama, isi in sheets.items():
+            pd.DataFrame(isi, columns=kepala).to_excel(writer, sheet_name=nama[:31], index=False)
+    output.seek(0)
+    return output.getvalue()
+
+
+
 def build_idml_exim(payload):
     """Isi template BRS Ekspor-Impor dengan data dari Supabase."""
     from modules.database import get_engine
@@ -651,6 +766,7 @@ BUILDERS = {
     "xlsx-transport": build_xlsx_transport,
     "xlsx-pariwisata": build_xlsx_pariwisata,
     "idml-transport": build_idml_transport,
+    "xlsx-perdagangan": build_xlsx_perdagangan,
     "idml-exim": build_idml_exim,
     "idml-pariwisata": build_idml_pariwisata,
 }

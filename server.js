@@ -906,6 +906,28 @@ const requestHandler = async (req, res) => {
     }
     if (url.pathname === '/pariwisata') return sendHtml(res, await buildPariwisata(session, url));
 
+// Pemetaan bagian narasi -> [arus, tabel] pada hasil perdaganganLaporan().
+const BAGIAN_NARASI = {
+  'ekspor-ringkasan': ['ekspor', 'ringkasan'],
+  'ekspor-hs2': ['ekspor', 'hs2'],
+  'ekspor-negara': ['ekspor', 'negara'],
+  'ekspor-pelabuhan': ['ekspor', 'pelabuhan'],
+  'impor-ringkasan': ['impor', 'ringkasan'],
+  'impor-hs2': ['impor', 'hs2'],
+  'impor-negara': ['impor', 'negara'],
+  'neraca-ringkasan': ['neraca', 'ringkasan'],
+};
+
+/** True bila tabel bagian narasi itu memuat minimal satu angka bukan nol. */
+async function bagianPunyaData(provinsi, tahun, bulan, bagian) {
+  const arah = BAGIAN_NARASI[bagian];
+  if (!arah) return false;
+  const laporan = await perdaganganLaporan(provinsi, tahun, bulan);
+  const baris = laporan?.[arah[0]]?.[arah[1]] || [];
+  return baris.some((r) => (r.nilai || [])
+    .some((v) => v !== null && v !== undefined && Number(v) !== 0));
+}
+
 /** Halaman modul Perdagangan Luar Negeri. */
 async function buildPerdagangan(session, url) {
   const wantTab = url.searchParams.get('tab');
@@ -971,11 +993,18 @@ async function buildPerdagangan(session, url) {
       if (session.role !== 'admin') {
         return redirect(res, flash(kembali, 'Hanya admin yang dapat membuat narasi.', false));
       }
-      if (!PERDAGANGAN_PROVINSI.includes(provinsi) || !MONTH_NAMES.includes(bulanNama) || !bagian) {
+      if (!PERDAGANGAN_PROVINSI.includes(provinsi) || !MONTH_NAMES.includes(bulanNama)
+          || !BAGIAN_NARASI[bagian]) {
         return redirect(res, flash(kembali, 'Provinsi, periode, atau bagian tidak valid.', false));
       }
       try {
         const bulan = MONTH_NAMES.indexOf(bulanNama) + 1;
+        // Jangan panggil AI bila tabelnya belum punya data: hasilnya akan
+        // mengarang, atau menyebut angka nol yang menyesatkan pembaca rilis.
+        if (!(await bagianPunyaData(provinsi, tahun, bulan, bagian))) {
+          return redirect(res, flash(kembali,
+            `Tabel ${bagian} belum punya data untuk periode ini, narasi tidak dibuat.`, false));
+        }
         const payload = await runNarrativeBridge({
           kind: 'perdagangan', provinsi, tahun, bulan, bagian, action: 'regenerate',
         });
@@ -1525,6 +1554,23 @@ async function buildPerdagangan(session, url) {
       const payload = { prov, thn: tahun, bln: bulan };
       const data = await runExport('xlsx-pariwisata', payload);
       return sendFile(res, data, EXPORT_MIME.xlsx, exportFileName('xlsx-pariwisata', payload));
+    }
+
+    if (url.pathname === '/export/perdagangan/xlsx') {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
+      const prov = url.searchParams.get('provinsi') || 'Papua Selatan';
+      const tahun = Number(url.searchParams.get('tahun'));
+      const bulan = url.searchParams.get('bulan') || '';
+      if (!MONTH_NAMES.includes(bulan) || !Number.isInteger(tahun)) {
+        return sendHtml(res, errorPage('Provinsi, tahun, atau bulan tidak valid.'), 400);
+      }
+      try {
+        const payload = { prov, thn: tahun, bln: bulan };
+        const data = await runExport('xlsx-perdagangan', payload);
+        return sendFile(res, data, EXPORT_MIME['xlsx-perdagangan'], exportFileName('xlsx-perdagangan', payload));
+      } catch (err) {
+        return sendHtml(res, errorPage(`Ekspor gagal (xlsx-perdagangan): ${err.message}`), 500);
+      }
     }
 
     if (url.pathname === '/export/perdagangan/idml') {

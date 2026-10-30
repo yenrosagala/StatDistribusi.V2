@@ -1101,6 +1101,12 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
     <input type="hidden" name="bulan" value="${escapeHtml(bulanName)}">
     <button class="btn btn-primary" type="submit">Unduh .idml</button>
   </form>
+  <form method="get" action="/export/perdagangan/xlsx" style="margin-top:8px">
+    <input type="hidden" name="provinsi" value="${escapeHtml(province)}">
+    <input type="hidden" name="tahun" value="${tahun}">
+    <input type="hidden" name="bulan" value="${escapeHtml(bulanName)}">
+    <button class="btn btn-secondary" type="submit">📊 Unduh Excel (Hanya Tabel)</button>
+  </form>
 </section>`;
 
   const laporanView = tab === 'laporan' && laporan

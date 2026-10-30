@@ -158,15 +158,24 @@ export async function perdaganganEtlLog(limit = 20) {
   return rows;
 }
 
-/** Ringkasan cepat untuk halaman admin: berapa baris per periode. */
+/**
+ * Ringkasan cepat untuk halaman admin: berapa baris per periode.
+ *
+ * Hanya basis resmi yang dihitung (ekspor PROVORIG, impor KPPBC). Sebelumnya
+ * query ini menjumlah semua basis, sehingga Agustus 2026 terbaca 406 baris
+ * ekspor padahal angka resminya 172 -- 234 baris sisanya basis POD.
+ */
 export async function perdaganganRingkasPeriode() {
   const rows = await safeRows(
     `SELECT tahun, bulan,
-            (SELECT count(*) FROM fact_ekspor e WHERE e.tahun=f.tahun AND e.bulan=f.bulan)::int AS ekspor,
-            (SELECT count(*) FROM fact_impor i WHERE i.tahun=f.tahun AND i.bulan=f.bulan)::int AS impor
-     FROM (SELECT DISTINCT tahun, bulan FROM fact_ekspor
-           UNION SELECT DISTINCT tahun, bulan FROM fact_impor) f
-     ORDER BY tahun DESC, bulan DESC`, [], 'ringkas periode');
+            (SELECT count(*) FROM fact_ekspor e
+              WHERE e.tahun=f.tahun AND e.bulan=f.bulan AND e.basis=$1)::int AS ekspor,
+            (SELECT count(*) FROM fact_impor i
+              WHERE i.tahun=f.tahun AND i.bulan=f.bulan AND i.basis=$2)::int AS impor
+     FROM (SELECT DISTINCT tahun, bulan FROM fact_ekspor WHERE basis=$1
+           UNION SELECT DISTINCT tahun, bulan FROM fact_impor WHERE basis=$2) f
+     ORDER BY tahun DESC, bulan DESC`,
+    [BASIS_EKSPOR, BASIS_IMPOR], 'ringkas periode');
   return rows;
 }
 
