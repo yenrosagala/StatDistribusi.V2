@@ -151,9 +151,16 @@ const INDICATOR_META = {
 const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
   '.svg': 'image/svg+xml',
   '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
 };
 
 function sign(payload) {
@@ -305,8 +312,13 @@ function readBody(req, limit = 10_000) {
 
 async function serveStatic(res, pathname) {
   // Assets live in public/ so the Vercel bundle can serve them.
-  const root = PUBLIC_DIR;
-  const file = path.join(root, path.basename(pathname));
+  const root = path.resolve(PUBLIC_DIR);
+  // Subfolder (mis. /assets/Pariwisata.jpg) dipertahankan, tetapi hasil
+  // resolve-nya wajib tetap di dalam public/ supaya tidak bisa keluar folder.
+  const file = path.resolve(root, '.' + decodeURIComponent(pathname));
+  if (file !== root && !file.startsWith(root + path.sep)) {
+    return sendHtml(res, errorPage('Berkas tidak ditemukan.'), 404);
+  }
   try {
     const data = await fs.readFile(file);
     res.writeHead(200, {
@@ -666,6 +678,24 @@ async function loadReport(url, info, session = { role: 'admin' }) {
 }
 
 /** Aggregate the headline numbers shown on the landing screen. */
+// Gambar latar kartu beranda: public/assets/<Judul>.<ext>, mis. Pariwisata.jpg.
+// Nama berkas harus sama dengan judul kartu; selain itu diabaikan.
+const JUDUL_KARTU = ['Pariwisata', 'Transportasi', 'Perdagangan'];
+async function asetBeranda() {
+  const hasil = {};
+  try {
+    for (const nama of await fs.readdir(path.join(PUBLIC_DIR, 'assets'))) {
+      const m = /^([A-Za-z]+)\.(png|jpe?g|webp|avif)$/i.exec(nama);
+      if (!m) continue;
+      const judul = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
+      if (JUDUL_KARTU.includes(judul)) hasil[judul] = `/assets/${nama}`;
+    }
+  } catch {
+    // Folder assets belum ada: kartu tampil tanpa gambar latar.
+  }
+  return hasil;
+}
+
 async function buildLanding(session) {
   let pari = { periods: 0, provinces: 0, rows: 0, last: null };
   let trans = { periods: 0, last: null };
@@ -701,7 +731,8 @@ async function buildLanding(session) {
   } catch (err) {
     console.warn('[landing] perdagangan tidak terbaca:', err.message);
   }
-  return landingPage({ user: session, pari, trans, dagang });
+  const aset = await asetBeranda();
+  return landingPage({ user: session, pari, trans, dagang, aset });
 }
 
 async function buildPariwisata(session, url) {  const rows = await pariwisataInfo();
@@ -858,6 +889,10 @@ const requestHandler = async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
   try {
+    if (req.method === 'GET' && /^\/(assets|fonts)\//.test(url.pathname)) {
+      return await serveStatic(res, url.pathname);
+    }
+
     if (req.method === 'GET' && /^\/(style\.css|app\.css|glass\.css|logo\.png|papua_provinces\.json)$/.test(url.pathname)) {
       return await serveStatic(res, url.pathname);
     }

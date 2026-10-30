@@ -196,10 +196,18 @@ ${narrativeScript()}${growthScript()}${summaryScript()}${adminTabsScript()}
 </html>`;
 }
 
-export function landingPage({ user, pari = {}, trans = {}, dagang = {} }) {
+export function landingPage({ user, pari = {}, trans = {}, dagang = {}, aset = {} }) {
   const periodText = (p) => (p && p.thn ? `${p.bln} ${p.thn}` : 'Belum ada data');
 
-  const card = (o) => `<a class="landing-card" href="${o.href}">
+  // Kartu memakai gambar latar bila tersedia: public/assets/<Judul>.<ext>.
+  // Lapisan gelap ditimpakan agar teks putih tetap terbaca di atas foto.
+  const card = (o) => {
+    const foto = aset[o.title];
+    const kelas = foto ? ' landing-card--foto' : '';
+    const gaya = foto
+      ? ` style="background-image:linear-gradient(rgba(15,23,42,.55),rgba(15,23,42,.82)),url('${escapeHtml(foto)}')"`
+      : '';
+    return `<a class="landing-card${kelas}" href="${o.href}"${gaya}>
     <span class="landing-icon" aria-hidden="true">${o.icon}</span>
     <span class="landing-title">${escapeHtml(o.title)}</span>
     <span class="landing-desc">${escapeHtml(o.desc)}</span>
@@ -208,6 +216,7 @@ export function landingPage({ user, pari = {}, trans = {}, dagang = {} }) {
     </span>
     <span class="landing-cta">Buka ${escapeHtml(o.title)} &rarr;</span>
   </a>`;
+  };
 
   // Tiga modul, masing-masing satu kartu yang mengisi tinggi layar.
   const body = `<div class="landing-screen">
