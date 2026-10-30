@@ -1953,11 +1953,16 @@ function wisnusCard(report, configs) {
   const lalu = peta(tahunLalu);
   const bulanAda = [...new Set([...ini.keys(), ...lalu.keys()])].sort((a, b) => a - b);
 
+  const judulSeri = `Perkembangan Kunjungan Wisnus di ${report.province}, `
+    + `Januari ${tahunLalu} - ${MONTH_NAMES[report.month - 1]} ${tahunIni}`;
+  const judulTujuan = `Jumlah Kunjungan Wisnus berdasar Tujuan di ${report.province}, `
+    + `Januari-${MONTH_NAMES[report.month - 1]} ${tahunIni}`;
+
   if (bulanAda.length) {
     configs.push({
       id: 'wisnus-seri',
       type: 'line',
-      title: `Perkembangan Kunjungan Wisnus ${report.province}, ${tahunLalu} dan ${tahunIni}`,
+      title: judulSeri,
       labels: bulanAda.map((b) => MONTH_NAMES[b - 1]),
       datasets: [
         // Warna sama dengan seri laporan lain (PREV/CUR_COLOR di reportTab).
@@ -1980,6 +1985,15 @@ function wisnusCard(report, configs) {
   </div>`;
 
   const tujuan = (w.tujuan || []).slice(0, 10);
+  if (tujuan.length) {
+    configs.push({
+      id: 'wisnus-tujuan',
+      type: 'bar',
+      title: judulTujuan,
+      labels: tujuan.map((t) => t.nama || t.kode),
+      datasets: [{ label: 'Jumlah perjalanan', data: tujuan.map((t) => t.jumlah), color: '#ED7D31' }],
+    });
+  }
   const baris = tujuan.map((t) => `<tr>
     <td>${escapeHtml(t.nama || t.kode)}</td>
     <td>${formatIdNumber(t.jumlah, 0)}</td>
@@ -1995,7 +2009,10 @@ function wisnusCard(report, configs) {
       'menurut kab/kota tujuan')}
     ${kpi(`Year-on-year ${MONTH_NAMES[bulan - 1]}`, formatPct(pct(kini, tahunLaluBulan)), 'dibanding tahun lalu')}
   </div>
+  <h3>${escapeHtml(judulSeri)}</h3>
   <div class="chart-frame" style="height:340px"><canvas id="wisnus-seri"></canvas></div>
+  <h3>${escapeHtml(judulTujuan)}</h3>
+  <div class="chart-frame" style="height:340px"><canvas id="wisnus-tujuan"></canvas></div>
   <h3>Kabupaten/Kota Tujuan Utama, Januari\u2013${MONTH_NAMES[bulan - 1]} ${tahunIni}</h3>
   <div class="table-scroll"><table class="data-table">
     <thead><tr><th>Kabupaten/Kota</th><th>Jumlah Perjalanan</th><th>% Peran</th></tr></thead>

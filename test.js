@@ -837,6 +837,9 @@ test('bacaKolomBulan mengenali dua format label bulan Excel Wisnus', async () =>
   assert.deepEqual(bacaKolomBulan("Jan.'19"), { bulan: 1, tahun: 2019 });
   assert.deepEqual(bacaKolomBulan("Sep '26"), { bulan: 9, tahun: 2026 });
   assert.deepEqual(bacaKolomBulan("Agt.'25"), { bulan: 8, tahun: 2025 });
+  // Berkas BPS memakai tiga singkatan Agustus: Ags, Agt, Aug.
+  assert.deepEqual(bacaKolomBulan("Ags.'25"), { bulan: 8, tahun: 2025 });
+  assert.deepEqual(bacaKolomBulan("Aug '26"), { bulan: 8, tahun: 2026 });
   assert.deepEqual(bacaKolomBulan("Des.'25"), { bulan: 12, tahun: 2025 });
   assert.equal(bacaKolomBulan('Total'), null);
   assert.equal(bacaKolomBulan('kode_kab'), null);

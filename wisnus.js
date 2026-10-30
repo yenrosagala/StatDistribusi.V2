@@ -17,8 +17,10 @@ export const SHEET_WISNUS = {
 };
 
 const BULAN = {
+  // "Ags" adalah singkatan BPS untuk Agustus; berkas memakai ketiganya
+  // (Ags.'25 untuk 2025, Aug '26 untuk 2026, Agt di tahun lain).
   jan: 1, feb: 2, mar: 3, apr: 4, mei: 5, may: 5, jun: 6, jul: 7,
-  agt: 8, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12,
+  ags: 8, agt: 8, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12,
 };
 
 /** "Jan.'19" atau "Sep '26" -> { tahun, bulan }; selain pola itu -> null. */
