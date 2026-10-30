@@ -1584,7 +1584,16 @@ async function buildPerdagangan(session, url) {
         return sendHtml(res, errorPage('Provinsi, tahun, atau bulan tidak valid.'), 400);
       }
       try {
-        const payload = { prov, thn: tahun, bln: bulan };
+        // Sama seperti Pariwisata: infografis/QR/nomor/tanggal ikut dikirim.
+        const assets = brsAssets(form.files);
+        const payload = {
+          prov, thn: tahun, bln: bulan,
+          nomor: values.nomor || '', tanggal: values.tanggal || '',
+        };
+        if (assets.qr) payload.qr_b64 = assets.qr.buffer.toString('base64');
+        if (assets.qr) payload.qr_name = assets.qr.name;
+        if (assets.infografis) payload.infografis_b64 = assets.infografis.buffer.toString('base64');
+        if (assets.infografis) payload.infografis_name = assets.infografis.name;
         const data = await runExport('idml-exim', payload);
         return sendFile(res, data, EXPORT_MIME['idml-exim'], exportFileName('idml-exim', payload));
       } catch (err) {

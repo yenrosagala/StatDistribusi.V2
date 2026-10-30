@@ -997,9 +997,6 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
     { label: 'Ringkasan', href: `/perdagangan?tab=ringkasan&${params}`, active: tab === 'ringkasan' },
     { label: 'Laporan', href: `/perdagangan?tab=laporan&${params}`, active: tab === 'laporan' },
     { label: 'Rincian', href: `/perdagangan?tab=rincian&${params}`, active: tab === 'rincian' },
-    ...(user.role === 'admin'
-      ? [{ label: 'Admin & Unggah', href: '/perdagangan?tab=admin', active: tab === 'admin' }]
-      : []),
   ];
   const header = `<div class="section-hero">
   <div>
@@ -1089,33 +1086,39 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
 </section>`;
   };
 
-  // Unduh BRS Exim (IDML) untuk periode yang sedang dilihat.
+  // Kartu unduh BRS Ekspor-Impor; bentuknya mengikuti kartu unduh Pariwisata.
   const unduh = `<section class="dashboard-card">
   <h2>📥 Unduh BRS Ekspor-Impor</h2>
   <p class="side-note">Dokumen .idml diisi dari data periode ini. Buka di InDesign,
     lalu simpan sebagai .indd atau PDF. Paket menyertakan PERINGATAN.txt berisi
     catatan ekspor.</p>
-  <form method="get" action="/export/perdagangan/idml">
+  <form method="post" action="/export/perdagangan/idml" class="admin-form"
+        enctype="multipart/form-data" onsubmit="return false;" id="perdagangan-idml-form">
     <input type="hidden" name="provinsi" value="${escapeHtml(province)}">
     <input type="hidden" name="tahun" value="${tahun}">
     <input type="hidden" name="bulan" value="${escapeHtml(bulanName)}">
-    <button class="btn btn-primary" type="submit">Unduh .idml</button>
-  </form>
-  <form method="get" action="/export/perdagangan/xlsx" style="margin-top:8px">
-    <input type="hidden" name="provinsi" value="${escapeHtml(province)}">
-    <input type="hidden" name="tahun" value="${tahun}">
-    <input type="hidden" name="bulan" value="${escapeHtml(bulanName)}">
-    <button class="btn btn-secondary" type="submit">📊 Unduh Excel (Hanya Tabel)</button>
+    <div class="admin-grid">
+      <label>Infografis (PNG/JPG) <input type="file" name="infografis" accept="image/png,image/jpeg"></label>
+      <label>Kode QR (PNG/JPG) <input type="file" name="qr" accept="image/png,image/jpeg"></label>
+      <label>Nomor BRS <input name="nomor" placeholder="mis. 235/10/94/Th. XXIX"></label>
+      <label>Tanggal Rilis <input name="tanggal" placeholder="mis. 1 Oktober 2026"></label>
+    </div>
+    <div class="metric-row">
+      <a class="btn btn-secondary" href="/export/perdagangan/xlsx?provinsi=${encodeURIComponent(province)}&tahun=${tahun}&bulan=${encodeURIComponent(bulanName)}">📊 Unduh Excel (Hanya Tabel)</a>
+      <button class="btn btn-primary" type="button" onclick="event.preventDefault(); document.getElementById('perdagangan-idml-form').submit(); return false;">🎨 Unduh Paket InDesign (.zip)</button>
+    </div>
   </form>
 </section>`;
 
+  // Sama seperti Pariwisata: peran tanpa hak unduh tidak melihat kartunya.
+  const bisaUnduh = user.role === 'admin' || user.role === 'user';
   const laporanView = tab === 'laporan' && laporan
     ? perdaganganLaporanView({
         tahun, bulan, laporan, narasi, province, isAdmin: user.role === 'admin',
       })
     : null;
   const isi = laporanView
-    ? laporanView.html
+    ? laporanView.html + (bisaUnduh ? unduh : '')
     : tab === 'rincian'
     ? tabelPeran('Golongan Barang Ekspor (HS 2 digit)', hs2?.ekspor, 'Nilai FOB')
       + tabelPeran('Golongan Barang Impor (HS 2 digit)', hs2?.impor, 'Nilai CIF')
@@ -1123,7 +1126,7 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
       + tabelPeran('Negara Asal Utama', negara?.impor, 'Nilai CIF')
       + tabelPeran('Pelabuhan Muat Utama', pelabuhan?.ekspor, 'Nilai FOB')
       + tabelPeran('Pelabuhan Bongkar Utama', pelabuhan?.impor, 'Nilai CIF')
-    : metrik + grafik + unduh;
+    : metrik + grafik;
 
   const body = `${header}${kontrol}${isi}`;
   // chartScript expects {id, type, labels, datasets}.
@@ -1222,7 +1225,7 @@ export function pariwisataPage({ user, info, periods, tab = 'home', map = null, 
 function heroActions(tabs, moduleId, user) {
   if (user.role !== 'admin') return '';
   // Hanya modul yang benar-benar punya tab admin yang menampilkan tautannya.
-  if (!['pariwisata', 'transportasi'].includes(moduleId)) return '';
+  if (!['pariwisata', 'transportasi', 'perdagangan'].includes(moduleId)) return '';
   const onAdmin = tabs.some((t) => t.active && String(t.href).includes('tab=admin'));
   return `<div class="hero-actions">
     <a class="btn${onAdmin ? ' btn-primary' : ''}" href="/${moduleId}?tab=admin">🔐 Admin ETL</a>

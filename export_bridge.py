@@ -754,6 +754,12 @@ def build_idml_exim(payload):
         raise SystemExit(f"Tidak ada data perdagangan untuk {prov} {bln} {thn}.")
 
     warnings = []
+    # Template BRS Exim belum punya frame gambar maupun kolom nomor/tanggal,
+    # jadi isian itu dicatat sebagai peringatan, bukan ditempelkan.
+    if any(payload.get(k) for k in ('infografis_b64', 'qr_b64', 'nomor', 'tanggal')):
+        warnings.append(
+            'Template BRS Exim belum punya tempat untuk nomor BRS, tanggal rilis, '
+            'kode QR, atau infografis; isian itu tidak ditempatkan.')
     idml_bytes, warnings = isi_template_exim(tpl.read_bytes(), data, label_dari_kode, warnings)
     nama = f"BRS_Exim_{prov.replace(' ', '_')}_{bln}_{thn}.idml"
     return _paket_dengan_peringatan(

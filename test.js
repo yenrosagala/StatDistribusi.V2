@@ -544,9 +544,15 @@ test('readZip rejects a buffer that is not a ZIP', () => {
   assert.ok(html.includes('Papua Selatan') || html.includes('Papua'), 'ringkasan provinsi tampil');
 });
 
-test('the perdagangan export button targets the idml route', () => {
+test('the perdagangan export card lives on the Laporan tab and posts to idml', () => {
+  const nilai = [null, null, 100, null, 250];
+  const laporan = {
+    ekspor: { ringkasan: [{ label: 'Total', nilai }], hs2: [], negara: [], pelabuhan: [] },
+    impor: { ringkasan: [{ label: 'Total', nilai }], hs2: [], negara: [], pelabuhan: [] },
+    neraca: { ringkasan: [{ label: 'Total', nilai }], rekap: [] },
+  };
   const html = perdaganganPage({
-    user: { name: 'Admin', role: 'admin' }, tab: 'ringkasan',
+    user: { name: 'Admin', role: 'admin' }, tab: 'laporan',
     provinsi: ['Papua Selatan'], province: 'Papua Selatan', tahun: 2026, bulan: 8,
     periods: [{ tahun: 2026, bulan: 8 }],
     ringkasan: {
@@ -555,9 +561,30 @@ test('the perdagangan export button targets the idml route', () => {
     },
     seri: { ekspor: [], impor: [], neraca: [] }, hs2: { ekspor: [], impor: [] },
     negara: { ekspor: [], impor: [] }, pelabuhan: { ekspor: [], impor: [] },
+    laporan,
   });
-  assert.ok(html.includes('action="/export/perdagangan/idml"'), 'form unduh harus menuju rute idml');
+  assert.ok(html.includes('action="/export/perdagangan/idml"'), 'form unduh menuju rute idml');
+  assert.ok(html.includes('method="post"'), 'form unduh memakai POST seperti Pariwisata');
+  assert.ok(html.includes('enctype="multipart/form-data"'), 'form unduh menerima berkas');
+  ['infografis', 'qr', 'nomor', 'tanggal'].forEach((n) => {
+    assert.ok(html.includes(`name="${n}"`), `isian ${n} ada`);
+  });
+  assert.ok(html.includes('/export/perdagangan/xlsx'), 'tautan Excel ada');
   assert.ok(html.includes('name="bulan" value="Agustus"'), 'bulan dikirim sebagai nama');
+
+  // Kartu unduh tidak lagi menempel di tab Ringkasan.
+  const ringkasan = perdaganganPage({
+    user: { name: 'Admin', role: 'admin' }, tab: 'ringkasan',
+    provinsi: ['Papua Selatan'], province: 'Papua Selatan', tahun: 2026, bulan: 8,
+    periods: [{ tahun: 2026, bulan: 8 }],
+    ringkasan: {
+      bulanIni: { ekspor: 0, eksporMigas: 0, eksporNonMigas: 0, impor: 1, imporMigas: 0, imporNonMigas: 1 },
+      kumulatif: { ekspor: 0, impor: 1 },
+    },
+    seri: { ekspor: [], impor: [], neraca: [] }, hs2: { ekspor: [], impor: [] },
+    negara: { ekspor: [], impor: [] }, pelabuhan: { ekspor: [], impor: [] },
+  });
+  assert.ok(!ringkasan.includes('/export/perdagangan/idml'), 'kartu unduh pindah dari Ringkasan');
   assert.equal(exportFileName('idml-exim', { prov: 'Papua Selatan', bln: 'Agustus', thn: 2026 }),
     'BRS_Exim_Papua_Selatan_Agustus_2026.zip');
 });test('the landing page lists all three modules as full-height cards', () => {
@@ -673,9 +700,9 @@ test('Perdagangan is no longer a sidebar link for admins', () => {
     periods: [{ tahun: 2026, bulan: 8 }], ringkasan: null, laporan,
   });
 
-  // Tiga kartu: Ekspor, Impor, Neraca Perdagangan.
+  // Empat kartu: tiga bab + kartu unduh yang pindah dari tab Ringkasan.
   const kartu = [...html.matchAll(/<h2>([^<]*)<\/h2>/g)].map((m) => m[1]);
-  assert.deepEqual(kartu, ['Ekspor', 'Impor', 'Neraca Perdagangan']);
+  assert.deepEqual(kartu, ['Ekspor', 'Impor', 'Neraca Perdagangan', '📥 Unduh BRS Ekspor-Impor']);
 
   // Nomor 1-5 berada setelah judul "Ekspor" dan sebelum judul "Impor".
   const pos = (frag) => html.indexOf(frag);

@@ -391,6 +391,31 @@ def _isi_entitas(cells, spec, daftar, ringkasan, warnings, sid, ket):
             "dijumlahkan ke baris sisa (Lainnya).")
 
 
+def _perbarui_keterangan(files, meta):
+    """Ganti provinsi dan periode pada judul/catatan yang tertulis di template.
+
+    Template BRS Exim disimpan dengan judul contoh "… Papua Selatan, Agustus
+    2026". Tanpa langkah ini, rilis September pun tetap berjudul Agustus.
+    Penggantian dilakukan pada teks mentah XML supaya seluruh story ikut,
+    termasuk yang tidak memuat tabel.
+    """
+    prov = (meta or {}).get("prov")
+    bln_nama = (meta or {}).get("bln_nama")
+    thn = (meta or {}).get("thn")
+    if not (prov and bln_nama and thn):
+        return
+    ganti = [("Papua Selatan", str(prov)), ("Agustus 2026", f"{bln_nama} {thn}")]
+    for nama, isi in list(files.items()):
+        if not (nama.startswith("Stories/") and nama.endswith(".xml")):
+            continue
+        teks = isi.decode("utf-8", "ignore")
+        baru = teks
+        for lama, kini in ganti:
+            baru = baru.replace(lama, kini)
+        if baru != teks:
+            files[nama] = baru.encode("utf-8")
+
+
 def isi_template_exim(template_bytes, data, label_dari_kode=None, warnings=None):
     """Kembalikan (bytes_idml, warnings).
 
@@ -411,6 +436,8 @@ def isi_template_exim(template_bytes, data, label_dari_kode=None, warnings=None)
     with zipfile.ZipFile(io.BytesIO(template_bytes)) as zf:
         order = zf.namelist()
         files = {n: zf.read(n) for n in order}
+
+    _perbarui_keterangan(files, data.get("meta"))
 
     def proses(sid, fn):
         n = f"Stories/Story_{sid}.xml"
