@@ -226,7 +226,10 @@ a { color: inherit; text-decoration: none; }
 .landing-screen .landing-grid {
   flex: 1 1 auto;
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px; align-items: stretch; min-height: 0;
+  gap: 18px; align-items: stretch;
+  /* Jangan biarkan grid menyusut di bawah tinggi isi kartu: kalau menyusut,
+     isi kartu meluber keluar kotaknya dan menimpa teks di bawahnya. */
+  min-height: auto;
 }
 .landing-screen .landing-card { height: 100%; }
 .landing-screen .landing-cta { margin-top: auto; }
@@ -257,7 +260,7 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: .05em; color: var(--ink-dim);
 }
 .landing-cta { margin-top: 6px; font-weight: 700; font-size: 13.5px; color: var(--primary); }
-.landing-greet { margin-top: 22px; font-size: 12.5px; color: var(--ink-dim); }
+.landing-greet { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-dim); }
 
 /* ---------- Section header action slot ---------- */
 .hero-actions { display: flex; gap: 10px; align-items: center; }

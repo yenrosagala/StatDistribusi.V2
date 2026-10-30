@@ -214,6 +214,7 @@ export function landingPage({ user, pari = {}, trans = {}, dagang = {} }) {
 <div class="landing-hero">
   <h1 class="landing-h1">Dashboard Statistik Papua</h1>
   <p class="landing-sub">Pilih salah satu modul untuk mulai menjelajah.</p>
+  <p class="landing-greet">Masuk sebagai <b>${escapeHtml(user.name)}</b> &middot; peran ${escapeHtml(user.role.toUpperCase())}</p>
 </div>
 <div class="landing-grid">
   ${card({
@@ -244,7 +245,6 @@ export function landingPage({ user, pari = {}, trans = {}, dagang = {} }) {
     ],
   })}
 </div>
-<p class="landing-greet">Masuk sebagai <b>${escapeHtml(user.name)}</b> &middot; peran ${escapeHtml(user.role.toUpperCase())}</p>
 </div>`;
 
   return layout({ title: 'Beranda', body, user, section: 'home' });
