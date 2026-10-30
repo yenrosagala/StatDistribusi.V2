@@ -613,4 +613,46 @@ test('Perdagangan is no longer a sidebar link for admins', () => {
   assert.ok(html.includes('-5.318,73'), 'neraca negatif tampil');
   assert.ok(html.includes('Tiongkok'), 'nama negara, bukan kode');
   assert.ok(html.includes('HS84'), 'label golongan barang');
+});test('the Laporan tab keeps the requested section order and adds two bar charts', () => {
+  const nilai = [null, null, 100, null, 250];
+  const blok = (label) => [
+    { label: 'Total', nilai },
+    { label: label, nilai: [null, null, 60, null, 160] },
+  ];
+  const laporan = {
+    ekspor: { ringkasan: blok('Migas'), hs2: [{ label: 'HS44', nilai }],
+      negara: [{ label: 'Australia', nilai }, { label: 'Total', nilai }],
+      pelabuhan: [{ label: '-', nilai }] },
+    impor: { ringkasan: blok('Migas'), hs2: [{ label: 'HS84', nilai }],
+      negara: [{ label: 'Tiongkok', nilai }, { label: 'Total', nilai }],
+      pelabuhan: [{ label: '95979', nilai }] },
+    neraca: {
+      ringkasan: [{ label: 'Total', nilai: [null, null, -100, null, -250] }],
+      rekap: [],
+    },
+  };
+  const html = perdaganganPage({
+    user: { name: 'Admin', role: 'admin' }, tab: 'laporan',
+    provinsi: ['Papua'], province: 'Papua', tahun: 2026, bulan: 8,
+    periods: [{ tahun: 2026, bulan: 8 }], ringkasan: null, laporan,
+  });
+
+  // Urutan bab: Ekspor -> 1..3 -> grafik -> 5, Impor -> 6..8 -> grafik -> 10.
+  const judul = [...html.matchAll(/<h2>([^<]*)<\/h2>/g)].map((m) => m[1]);
+  const idx = (frag) => judul.findIndex((j) => j.includes(frag));
+  assert.ok(idx('1. Ringkasan Perkembangan Ekspor') >= 0, 'tabel 1 ekspor ada');
+  assert.ok(idx('1. Ringkasan Perkembangan Ekspor') < idx('2. Nilai Ekspor'), '1 sebelum 2');
+  assert.ok(idx('2. Nilai Ekspor') < idx('3. Nilai Ekspor'), '2 sebelum 3');
+  assert.ok(idx('3. Nilai Ekspor') < idx('Perbandingan Nilai Kumulatif Ekspor'), '3 sebelum grafik ekspor');
+  assert.ok(idx('Perbandingan Nilai Kumulatif Ekspor') < idx('5. Nilai Ekspor Menurut Pelabuhan'), 'grafik sebelum 5');
+  assert.ok(idx('6. Nilai Impor Migas') < idx('7. Nilai Impor'), '6 sebelum 7');
+  assert.ok(idx('7. Nilai Impor') < idx('8. Nilai Impor'), '7 sebelum 8');
+  assert.ok(idx('8. Nilai Impor') < idx('Perbandingan Nilai Kumulatif Impor'), '8 sebelum grafik impor');
+  assert.ok(idx('Perbandingan Nilai Kumulatif Impor') < idx('10. Ringkasan Perkembangan Neraca'), 'grafik sebelum 10');
+
+  // Dua grafik batang dengan dua seri kumulatif.
+  assert.ok(html.includes('id="pdg-negara-ekspor"'), 'kanvas ekspor ada');
+  assert.ok(html.includes('id="pdg-negara-impor"'), 'kanvas impor ada');
+  assert.ok(html.includes('"type":"bar"'), 'grafik bertipe bar');
+  assert.ok(html.includes('Kumulatif 2025') && html.includes('Kumulatif 2026'), 'dua seri kumulatif');
 });

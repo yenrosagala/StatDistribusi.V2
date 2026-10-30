@@ -831,30 +831,76 @@ function tabelPerdagangan(caption, baris, labelKolom, konteks) {
 </section>`;
 }
 
-/** Isi tab Laporan: 4 tabel ekspor, 4 tabel impor, dan 2 tabel neraca. */
+/**
+ * Isi tab Laporan, dengan urutan tetap seperti yang diminta:
+ *
+ *   1. Ringkasan Perkembangan Ekspor
+ *   2. Ekspor menurut Golongan HS 2 Digit
+ *   3. Ekspor menurut Negara Tujuan
+ *   4. Grafik batang kumulatif ekspor per negara (tahun lalu vs tahun ini)
+ *   5. Ekspor menurut Pelabuhan Muat
+ *   6. Impor Migas dan Nonmigas
+ *   7. Impor menurut Golongan HS 2 Digit
+ *   8. Impor menurut Negara Asal
+ *   9. Grafik batang kumulatif impor per negara (tahun lalu vs tahun ini)
+ *  10. Ringkasan Perkembangan Neraca Perdagangan
+ *
+ * Mengembalikan { html, charts } karena dua grafik perlu didaftarkan ke
+ * chartScript di layout.
+ */
 function perdaganganLaporanView({ tahun, bulan, laporan }) {
   const prev = bulan > 1 ? { tahun, bulan: bulan - 1 } : { tahun: tahun - 1, bulan: 12 };
   const konteks = { tahunLaporan: tahun, bulanLaporan: bulan, tahunPrev: prev.tahun, bulanPrev: prev.bulan };
-
   const f = (v) => (v == null ? '&ndash;' : formatIdNumber(v, 2));
 
-  const blokArus = (judul, blok) => `<section class="dashboard-card">
-  <div class="section-header"><h2>${escapeHtml(judul)}</h2></div>
-  <p class="side-note">Nilai dalam Ribu US$.</p>
-</section>
-${tabelPerdagangan(`Tabel 1. Ringkasan Perkembangan ${judul}`, blok.ringkasan, 'Uraian', konteks)}
-${tabelPerdagangan(`Tabel 2. ${judul} Menurut Golongan HS 2 Digit (10 terbesar)`, blok.hs2, 'Golongan Barang', konteks)}
-${tabelPerdagangan(`Tabel 3. ${judul} Menurut Negara ${judul === 'Ekspor' ? 'Tujuan' : 'Asal'} (10 terbesar)`, blok.negara, 'Negara', konteks)}
-${tabelPerdagangan(`Tabel 4. ${judul} Menurut Pelabuhan ${judul === 'Ekspor' ? 'Muat' : 'Bongkar'}`, blok.pelabuhan, 'Pelabuhan', konteks)}`;
+  const judulBagian = (teks, catatan) => `<section class="dashboard-card">
+  <div class="section-header"><h2>${escapeHtml(teks)}</h2></div>
+  ${catatan ? `<p class="side-note">${escapeHtml(catatan)}</p>` : ''}
+</section>`;
 
+  // --- grafik batang: kumulatif per negara, tahun lalu vs tahun ini ---
+  const grafikNegara = (kunci, id, judul) => {
+    const baris = (laporan[kunci]?.negara || []).filter((r) => !/^Total/i.test(r.label)).slice(0, 10);
+    const kanvas = `<section class="dashboard-card">
+  <h2>${escapeHtml(judul)}</h2>
+  <div class="chart-frame" style="height:360px"><canvas id="${id}"></canvas></div>
+  <p class="side-note">Kumulatif Januari&ndash;${escapeHtml(MONTH_NAMES[bulan - 1])}, dalam Ribu US$.</p>
+</section>`;
+    if (!baris.length) {
+      return { html: `<section class="dashboard-card"><h2>${escapeHtml(judul)}</h2>
+  <div class="alert alert-info">Belum ada data negara untuk periode ini.</div></section>`, chart: null };
+    }
+    return {
+      html: kanvas,
+      chart: {
+        id,
+        type: 'bar',
+        title: judul,
+        labels: baris.map((r) => r.label),
+        datasets: [
+          { label: `Kumulatif ${tahun - 1}`, data: baris.map((r) => r.nilai[3]), color: '#70AD47' },
+          { label: `Kumulatif ${tahun}`, data: baris.map((r) => r.nilai[4]), color: '#ED7D31' },
+        ],
+      },
+    };
+  };
+
+  const ekspor = laporan.ekspor;
+  const impor = laporan.impor;
   const neraca = laporan.neraca;
+
+  const gEkspor = grafikNegara('ekspor', 'pdg-negara-ekspor',
+    `Perbandingan Nilai Kumulatif Ekspor Menurut Negara Tujuan (Ribu US$), ${tahun - 1} dan ${tahun}`);
+  const gImpor = grafikNegara('impor', 'pdg-negara-impor',
+    `Perbandingan Nilai Kumulatif Impor Menurut Negara Asal (Ribu US$), ${tahun - 1} dan ${tahun}`);
+
+  // --- neraca ---
   const n = neraca.ringkasan;
   const kpi = (label, v, sub) => `<div class="metric-card">
   <span class="stat-label">${escapeHtml(label)}</span>
   <span class="metric-value${v != null && v < 0 ? ' neg' : ''}">${f(v)}</span>
   <span class="side-note">${escapeHtml(sub)}</span></div>`;
   const statusNeraca = (v) => (v == null ? '&ndash;' : (v >= 0 ? 'Surplus' : 'Defisit'));
-
   const barisNeraca = n.map((r) => `<tr${/^Total/i.test(r.label) ? ' class="total-row"' : ''}>
   <td>${escapeHtml(r.label)}</td>
   <td>${f(r.nilai[0])}</td><td>${f(r.nilai[1])}</td><td>${f(r.nilai[2])}</td>
@@ -863,13 +909,7 @@ ${tabelPerdagangan(`Tabel 4. ${judul} Menurut Pelabuhan ${judul === 'Ekspor' ? '
   <td>${r.nilai[2] == null || r.nilai[1] == null ? '&ndash;' : formatIdNumber(r.nilai[2] - r.nilai[1], 2)}</td>
   <td>${r.nilai[4] == null || r.nilai[3] == null ? '&ndash;' : formatIdNumber(r.nilai[4] - r.nilai[3], 2)}</td></tr>`).join('');
 
-  const rekap = neraca.rekap.map((r) => `<tr>
-  <td>${escapeHtml(MONTH_NAMES[r.bulan - 1])}</td>
-  <td>${f(r.eksporLast)}</td><td>${f(r.imporLast)}</td><td>${f(r.neracaLast)}</td>
-  <td>${f(r.eksporNow)}</td><td>${f(r.imporNow)}</td><td>${f(r.neracaNow)}</td>
-  <td>${f(r.kumLast)}</td><td>${f(r.kumNow)}</td></tr>`).join('');
-
-  return `<section class="dashboard-card">
+  const blokNeraca = `<section class="dashboard-card">
   <div class="section-header"><h2>Neraca Perdagangan</h2></div>
   <div class="metric-grid">
     ${kpi(`Neraca ${MONTH_NAMES[bulan - 1]} ${tahun}`, n[0].nilai[2], statusNeraca(n[0].nilai[2]))}
@@ -878,7 +918,7 @@ ${tabelPerdagangan(`Tabel 4. ${judul} Menurut Pelabuhan ${judul === 'Ekspor' ? '
   </div>
 </section>
 <section class="dashboard-card">
-  <h2>Tabel 1. Ringkasan Neraca Perdagangan</h2>
+  <h2>10. Ringkasan Perkembangan Neraca Perdagangan</h2>
   <div class="table-scroll"><table class="data-table table-laporan">
     <thead><tr><th>Uraian</th>
       <th>${escapeHtml(MONTH_NAMES[bulan - 1])} ${tahun - 1}</th>
@@ -890,23 +930,26 @@ ${tabelPerdagangan(`Tabel 4. ${judul} Menurut Pelabuhan ${judul === 'Ekspor' ? '
     </tr></thead>
     <tbody>${barisNeraca}</tbody>
   </table></div>
-</section>
-<section class="dashboard-card">
-  <h2>Tabel 2. Rekap Bulanan Ekspor, Impor, dan Neraca</h2>
-  <div class="table-scroll"><table class="data-table table-laporan">
-    <thead>
-      <tr><th rowspan="2">Bulan</th><th colspan="3">${tahun - 1}</th><th colspan="3">${tahun}</th>
-        <th colspan="2">Neraca kumulatif</th></tr>
-      <tr><th>Ekspor</th><th>Impor</th><th>Neraca</th><th>Ekspor</th><th>Impor</th><th>Neraca</th>
-        <th>${tahun - 1}</th><th>${tahun}</th></tr>
-    </thead>
-    <tbody>${rekap}</tbody>
-  </table></div>
   <p class="side-note">Ekspor berbasis provinsi asal barang (PROVORIG), pelabuhan muat berbasis POD;
     impor berbasis KPPBC. Neraca per provinsi adalah perkiraan.</p>
-</section>
-${blokArus('Ekspor', laporan.ekspor)}
-${blokArus('Impor', laporan.impor)}`;
+</section>`;
+
+  const html = [
+    judulBagian('Ekspor', 'Nilai dalam Ribu US$.'),
+    tabelPerdagangan('1. Ringkasan Perkembangan Ekspor', ekspor.ringkasan, 'Uraian', konteks),
+    tabelPerdagangan('2. Nilai Ekspor Menurut Golongan HS 2 Digit (10 terbesar)', ekspor.hs2, 'Golongan Barang', konteks),
+    tabelPerdagangan('3. Nilai Ekspor Menurut Negara Tujuan (10 terbesar)', ekspor.negara, 'Negara', konteks),
+    gEkspor.html,
+    tabelPerdagangan('5. Nilai Ekspor Menurut Pelabuhan Muat', ekspor.pelabuhan, 'Pelabuhan', konteks),
+    judulBagian('Impor', 'Nilai dalam Ribu US$.'),
+    tabelPerdagangan('6. Nilai Impor Migas dan Nonmigas', impor.ringkasan, 'Uraian', konteks),
+    tabelPerdagangan('7. Nilai Impor Menurut Golongan HS 2 Digit (10 terbesar)', impor.hs2, 'Golongan Barang', konteks),
+    tabelPerdagangan('8. Nilai Impor Menurut Negara Asal (10 terbesar)', impor.negara, 'Negara', konteks),
+    gImpor.html,
+    blokNeraca,
+  ].join('');
+
+  return { html, charts: [gEkspor.chart, gImpor.chart].filter(Boolean) };
 }
 
 export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, tahun, bulan,
@@ -1024,8 +1067,11 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
   </form>
 </section>`;
 
-  const isi = tab === 'laporan' && laporan
+  const laporanView = tab === 'laporan' && laporan
     ? perdaganganLaporanView({ tahun, bulan, laporan })
+    : null;
+  const isi = laporanView
+    ? laporanView.html
     : tab === 'rincian'
     ? tabelPeran('Golongan Barang Ekspor (HS 2 digit)', hs2?.ekspor, 'Nilai FOB')
       + tabelPeran('Golongan Barang Impor (HS 2 digit)', hs2?.impor, 'Nilai CIF')
@@ -1037,6 +1083,7 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
 
   const body = `${header}${kontrol}${isi}`;
   // chartScript expects {id, type, labels, datasets}.
+  const chartsLaporan = laporanView ? laporanView.charts : [];
   const charts = tab === 'ringkasan'
     ? [{
         id: 'pdg-seri',
@@ -1051,13 +1098,14 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
       }]
     : [];
 
+  const semuaGrafik = [...charts, ...chartsLaporan];
   return layout({
     title: 'Perdagangan Luar Negeri',
     body,
     user,
     section: 'perdagangan',
     crumbs: moduleCrumbs('Perdagangan', '/perdagangan', tab),
-    scripts: charts.length ? chartScript(charts) : '',
+    scripts: semuaGrafik.length ? chartScript(semuaGrafik) : '',
   });
 }
 

@@ -362,6 +362,11 @@ export const NEGARA_NAMA = {
   PH: 'Filipina', HK: 'Hong Kong', TW: 'Taiwan', DE: 'Jerman', GB: 'Inggris',
   NL: 'Belanda', FR: 'Prancis', IT: 'Italia', ES: 'Spanyol', BE: 'Belgia',
   CH: 'Swiss', CA: 'Kanada', BR: 'Brasil', RU: 'Rusia', ID: 'Indonesia',
+  FI: 'Finlandia', MX: 'Meksiko', SE: 'Swedia', NO: 'Norwegia', DK: 'Denmark',
+  AT: 'Austria', PL: 'Polandia', TR: 'Turki', SA: 'Arab Saudi', AE: 'Uni Emirat Arab',
+  EG: 'Mesir', ZA: 'Afrika Selatan', AR: 'Argentina', CL: 'Cile', PE: 'Peru',
+  KH: 'Kamboja', LA: 'Laos', MM: 'Myanmar', BD: 'Bangladesh', LK: 'Sri Lanka',
+  PK: 'Pakistan', IR: 'Iran', IQ: 'Irak', KW: 'Kuwait', QA: 'Qatar',
 };
 
 /** Label HS 2 digit dari tabel dimensi, fallback "HSxx". */
