@@ -1,8 +1,7 @@
 # dependencies
 node_modules/
 
-# third-party skill data (re-install with `npx skills add`)
-vendor/ui-ux-pro-max/
+# Skills live in .claude/skills/ and are committed so a fresh clone has them.
 
 # Python bytecode
 __pycache__/
