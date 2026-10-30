@@ -169,4 +169,257 @@ export async function perdaganganRingkasPeriode() {
   return rows;
 }
 
+// ---------------------------------------------------------------------------
+// Laporan lengkap (tab Laporan) — meniru laporan perdagangan-papua.html:
+// per arus 4 tabel (ringkasan, HS2, negara, pelabuhan) dengan 5 kolom periode
+// dan 6 kolom turunan; ditambah 2 tabel neraca.
+// ---------------------------------------------------------------------------
+
+/** (tahun, bulan) sebelumnya, melewati batas tahun. */
+function prevPeriod(tahun, bulan) {
+  return bulan > 1 ? { tahun, bulan: bulan - 1 } : { tahun: tahun - 1, bulan: 12 };
+}
+
+/**
+ * Ambil semua baris satu arus untuk tahun ini + tahun lalu sampai `bulan`,
+ * lalu agregasikan di JS supaya hanya satu query per arus.
+ */
+async function barisArus(arus, prov, tahun, bulan, basis) {
+  const tabel = arus === 'ekspor' ? 'fact_ekspor' : 'fact_impor';
+  const kolom = arus === 'ekspor' ? 'fob' : 'cif';
+  const kolomEntitas = arus === 'ekspor' ? 'negara_iso2' : 'negara_iso2';
+  const rows = await safeRows(
+    `SELECT tahun, bulan, migas, hs2, ${kolomEntitas} AS negara, pelabuhan, ${kolom} AS nilai
+     FROM ${tabel}
+     WHERE prov=$1 AND basis=$2 AND tahun IN ($3,$4) AND bulan <= $5`,
+    [prov, basis, tahun, tahun - 1, bulan], `laporan ${arus}`);
+  return rows.map((r) => ({
+    tahun: num(r.tahun), bulan: num(r.bulan),
+    migas: String(r.migas || '').trim(),
+    hs2: String(r.hs2 || '').trim(),
+    negara: String(r.negara || '').trim(),
+    pelabuhan: String(r.pelabuhan || '').trim(),
+    nilai: num(r.nilai) / 1000,
+  }));
+}
+
+/** Agregat satu dimensi pada satu irisan waktu. */
+function agregat(rows, dimensi, slice) {
+  const out = new Map();
+  for (const r of rows) {
+    if (!slice(r)) continue;
+    const key = dimensi === 'migas' ? r.migas : r[dimensi];
+    if (!key) continue;
+    out.set(key, (out.get(key) || 0) + r.nilai);
+  }
+  return out;
+}
+
+/**
+ * 5 nilai periode untuk semua kunci pada satu dimensi.
+ *
+ * `periodeAda` berisi kunci "tahun|bulan" yang punya data pada provinsi itu
+ * (dari arus mana pun). Bila periodenya ada tetapi entitas ini tidak punya
+ * baris, nilainya 0 — sama seperti perilaku laporan asli. Bila periodenya sama
+ * sekali tidak ada, nilainya null dan ditampilkan "–".
+ */
+function seri5(rows, dimensi, tahun, bulan, periodeAda) {
+  const prev = prevPeriod(tahun, bulan);
+  const slices = [
+    { cek: (r) => r.tahun === tahun - 1 && r.bulan === bulan, ada: (y, m) => periodeAda.has(`${y}|${m}`), },
+    { cek: (r) => r.tahun === prev.tahun && r.bulan === prev.bulan, ada: () => periodeAda.has(`${prev.tahun}|${prev.bulan}`) },
+    { cek: (r) => r.tahun === tahun && r.bulan === bulan, ada: () => periodeAda.has(`${tahun}|${bulan}`) },
+    { cek: (r) => r.tahun === tahun - 1 && r.bulan <= bulan, ada: () => true },
+    { cek: (r) => r.tahun === tahun && r.bulan <= bulan, ada: () => true },
+  ];
+  const maps = slices.map((s) => agregat(rows, dimensi, s.cek));
+  const kumAda = [
+    [...periodeAda].some((k) => k.startsWith(`${tahun - 1}|`)),
+    [...periodeAda].some((k) => k.startsWith(`${tahun}|`)),
+  ];
+  const keys = new Set();
+  maps.forEach((m) => m.forEach((_v, k) => keys.add(k)));
+  const hasil = new Map();
+  for (const k of keys) {
+    hasil.set(k, maps.map((m, i) => {
+      if (m.has(k)) return m.get(k);
+      // periode ada -> 0; kumulatif -> 0 bila tahun itu punya data
+      if (i < 3) return slices[i].ada() ? 0 : null;
+      return kumAda[i - 3] ? 0 : null;
+    }));
+  }
+  return hasil;
+}
+
+/** Jumlahkan beberapa seri 5-nilai (mis. Migas + NonMigas = Total). */
+function jumlahSeri(daftar) {
+  return [0, 1, 2, 3, 4].map((i) => {
+    const vals = daftar.map((s) => s[i]).filter((v) => v != null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+  });
+}
+
+function barisDariSeri(seri, label) {
+  return { label, nilai: seri };
+}
+
+/**
+ * Total 5 periode dari Migas + NonMigas.
+ *
+ * Bila kedua rincian tidak punya baris tetapi periodenya ada, totalnya 0
+ * (bukan null) supaya cocok dengan laporan BPS: periode yang ada dengan nol
+ * transaksi ditulis 0,00.
+ */
+function totalDari(migas, tahun, bulan, periodeAda) {
+  const prev = prevPeriod(tahun, bulan);
+  const adaPeriode = [
+    periodeAda.has(`${tahun - 1}|${bulan}`),
+    periodeAda.has(`${prev.tahun}|${prev.bulan}`),
+    periodeAda.has(`${tahun}|${bulan}`),
+    [...periodeAda].some((k) => k.startsWith(`${tahun - 1}|`)),
+    [...periodeAda].some((k) => k.startsWith(`${tahun}|`)),
+  ];
+  const m = migas.get('Migas') || [null, null, null, null, null];
+  const n = migas.get('NonMigas') || [null, null, null, null, null];
+  return [0, 1, 2, 3, 4].map((i) => {
+    if (m[i] != null || n[i] != null) return (m[i] || 0) + (n[i] || 0);
+    return adaPeriode[i] ? 0 : null;
+  });
+}
+
+/** Susun 4 tabel satu arus. */
+function tabelArus(rows, tahun, bulan, periodeAda, limit = 10) {
+  const migas = seri5(rows, 'migas', tahun, bulan, periodeAda);
+  const total = totalDari(migas, tahun, bulan, periodeAda);
+
+  const isi = (key) => {
+    const v = migas.get(key);
+    if (v) return v;
+    // periode ada tanpa baris -> 0, supaya konsisten dengan Total
+    return total.map((x) => (x == null ? null : 0));
+  };
+  const ringkasan = [
+    barisDariSeri(total, 'Total'),
+    barisDariSeri(isi('Migas'), 'Migas'),
+    barisDariSeri(isi('NonMigas'), 'Non Migas'),
+  ];
+
+  const entitas = (dimensi) => {
+    const seri = seri5(rows, dimensi, tahun, bulan, periodeAda);
+    let list = [...seri.entries()]
+      .map(([k, v]) => ({ k, v }))
+      .filter((r) => r.v.some((x) => x != null))
+      .sort((a, b) => (b.v[2] ?? 0) - (a.v[2] ?? 0) || (b.v[4] ?? 0) - (a.v[4] ?? 0));
+    if (limit && list.length > limit) {
+      const sisa = list.slice(limit);
+      list = list.slice(0, limit);
+      const agg = [0, 1, 2, 3, 4].map((i) => {
+        const vals = sisa.map((r) => r.v[i]).filter((x) => x != null);
+        return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+      });
+      list.push({ k: `Lainnya (${sisa.length})`, v: agg });
+    }
+    list.push({ k: 'Total', v: total });
+    return list.map((r) => barisDariSeri(r.v, r.k));
+  };
+
+  return {
+    ringkasan,
+    hs2: entitas('hs2'),
+    negara: entitas('negara'),
+    pelabuhan: entitas('pelabuhan'),
+  };
+}
+
+/** Rekap bulanan neraca: 12 bulan, dua tahun, plus kumulatif. */
+function rekapNeraca(eksporRows, imporRows, tahun, bulan) {
+  const out = [];
+  let kumLast = null;
+  let kumNow = null;
+  for (let b = 1; b <= 12; b += 1) {
+    const sum = (rows, th) => rows
+      .filter((r) => r.tahun === th && r.bulan === b)
+      .reduce((a, r) => a + r.nilai, 0);
+    const ey = b <= bulan ? sum(eksporRows, tahun) : null;
+    const iy = b <= bulan ? sum(imporRows, tahun) : null;
+    const ep = sum(eksporRows, tahun - 1);
+    const ip = sum(imporRows, tahun - 1);
+    const by = ey != null && iy != null ? ey - iy : null;
+    const bp = ep - ip;
+    if (by != null) kumNow = (kumNow || 0) + by;
+    kumLast = (kumLast || 0) + bp;
+    out.push({ bulan: b, eksporLast: ep, imporLast: ip, neracaLast: bp,
+      eksporNow: ey, imporNow: iy, neracaNow: by, kumLast, kumNow });
+  }
+  return out;
+}
+
+/** Nama negara untuk kode ISO2 yang muncul di data. */
+export const NEGARA_NAMA = {
+  CN: 'Tiongkok', JP: 'Jepang', US: 'Amerika Serikat', AU: 'Australia',
+  SG: 'Singapura', MY: 'Malaysia', KR: 'Korea Selatan', IN: 'India',
+  NZ: 'Selandia Baru', PG: 'Papua Nugini', TH: 'Thailand', VN: 'Vietnam',
+  PH: 'Filipina', HK: 'Hong Kong', TW: 'Taiwan', DE: 'Jerman', GB: 'Inggris',
+  NL: 'Belanda', FR: 'Prancis', IT: 'Italia', ES: 'Spanyol', BE: 'Belgia',
+  CH: 'Swiss', CA: 'Kanada', BR: 'Brasil', RU: 'Rusia', ID: 'Indonesia',
+};
+
+/** Label HS 2 digit dari tabel dimensi, fallback "HSxx". */
+async function labelHs2() {
+  const rows = await safeRows('SELECT kode, label FROM dim_perdagangan_hs2', [], 'label hs2');
+  return new Map(rows.map((r) => [String(r.kode), r.label]));
+}
+
+/** Ganti kode entitas menjadi label yang bisa dibaca. */
+function beriLabel(daftar, dimensi, hs2Labels) {
+  return daftar.map((r) => {
+    if (dimensi === 'negara') {
+      const kode = String(r.label).toUpperCase();
+      return { ...r, label: NEGARA_NAMA[kode] || r.label };
+    }
+    if (dimensi === 'hs2') {
+      const lab = hs2Labels.get(String(r.label));
+      return { ...r, label: lab || `HS${r.label}` };
+    }
+    return r;
+  });
+}
+
+/** Data lengkap tab Laporan. */
+export async function perdaganganLaporan(prov, tahun, bulan) {
+  const [eksporResmi, eksporPod, imporResmi] = await Promise.all([
+    barisArus('ekspor', prov, tahun, bulan, BASIS_EKSPOR),
+    barisArus('ekspor', prov, tahun, bulan, 'POD'),
+    barisArus('impor', prov, tahun, bulan, BASIS_IMPOR),
+  ]);
+
+  // Periode dianggap "ada" bila arus mana pun punya baris. Di dalam periode
+  // yang ada, entitas tanpa baris bernilai 0 (bukan null).
+  const periodeAda = new Set();
+  for (const r of [...eksporResmi, ...eksporPod, ...imporResmi]) {
+    periodeAda.add(`${r.tahun}|${r.bulan}`);
+  }
+
+  const hs2Labels = await labelHs2();
+  const ekspor = tabelArus(eksporResmi, tahun, bulan, periodeAda);
+  ekspor.hs2 = beriLabel(ekspor.hs2, 'hs2', hs2Labels);
+  ekspor.negara = beriLabel(ekspor.negara, 'negara', hs2Labels);
+  // Pelabuhan muat memakai basis POD, bukan angka resmi.
+  ekspor.pelabuhan = tabelArus(eksporPod, tahun, bulan, periodeAda).pelabuhan;
+  const impor = tabelArus(imporResmi, tahun, bulan, periodeAda);
+  impor.hs2 = beriLabel(impor.hs2, 'hs2', hs2Labels);
+  impor.negara = beriLabel(impor.negara, 'negara', hs2Labels);
+
+  const neraca = {
+    ringkasan: ekspor.ringkasan.map((r, i) => ({
+      label: i === 0 ? 'Total' : r.label,
+      nilai: r.nilai.map((v, j) => (v == null || impor.ringkasan[i].nilai[j] == null
+        ? null : v - impor.ringkasan[i].nilai[j])),
+    })),
+    rekap: rekapNeraca(eksporResmi, imporResmi, tahun, bulan),
+  };
+
+  return { ekspor, impor, neraca };
+}
+
 export const PERDAGANGAN_PROVINSI = ['Papua', 'Papua Selatan', 'Papua Tengah', 'Papua Pegunungan'];

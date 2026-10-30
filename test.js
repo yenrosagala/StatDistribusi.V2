@@ -579,4 +579,38 @@ test('Perdagangan is no longer a sidebar link for admins', () => {
   const nav = /<nav class="side-nav">([\s\S]*?)<\/nav>/.exec(html)[1];
   assert.ok(!nav.includes('/perdagangan'), 'sidebar tidak lagi memuat Perdagangan');
   assert.ok(nav.includes('href="/"'), 'Beranda tetap ada');
+});test('the Laporan tab renders the full perdagangan report', () => {
+  const laporan = {
+    ekspor: {
+      ringkasan: [{ label: 'Total', nilai: [null, null, 0, null, 0] }],
+      hs2: [{ label: 'HS44', nilai: [null, null, 0, null, 0] }],
+      negara: [{ label: 'Australia', nilai: [null, null, 0, null, 0] }],
+      pelabuhan: [{ label: '-', nilai: [null, null, 0, null, 0] }],
+    },
+    impor: {
+      ringkasan: [{ label: 'Total', nilai: [null, null, 5318.73, null, 5318.73] }],
+      hs2: [{ label: 'Mesin & Peralatan Mekanis (HS84)', nilai: [null, null, 4532.66, null, 4532.66] }],
+      negara: [{ label: 'Tiongkok', nilai: [null, null, 5318.73, null, 5318.73] }],
+      pelabuhan: [{ label: '95979', nilai: [null, null, 5318.73, null, 5318.73] }],
+    },
+    neraca: {
+      ringkasan: [{ label: 'Total', nilai: [null, null, -5318.73, null, -5318.73] }],
+      rekap: Array.from({ length: 12 }, (_, i) => ({
+        bulan: i + 1, eksporLast: 0, imporLast: 0, neracaLast: 0,
+        eksporNow: null, imporNow: null, neracaNow: null, kumLast: 0, kumNow: null,
+      })),
+    },
+  };
+  const html = perdaganganPage({
+    user: { name: 'Admin', role: 'admin' }, tab: 'laporan',
+    provinsi: ['Papua Selatan'], province: 'Papua Selatan', tahun: 2026, bulan: 8,
+    periods: [{ tahun: 2026, bulan: 8 }], ringkasan: null, laporan,
+  });
+  // 2 tabel neraca + 4 tabel per arus (ekspor & impor).
+  assert.equal((html.match(/Tabel 2\. Rekap Bulanan/g) || []).length, 1, 'rekap bulanan ada');
+  assert.equal((html.match(/Tabel 4\./g) || []).length, 2, 'tabel 4 ekspor dan impor');
+  assert.ok(html.includes('5.318,73'), 'nilai impor tampil');
+  assert.ok(html.includes('-5.318,73'), 'neraca negatif tampil');
+  assert.ok(html.includes('Tiongkok'), 'nama negara, bukan kode');
+  assert.ok(html.includes('HS84'), 'label golongan barang');
 });

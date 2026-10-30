@@ -784,13 +784,139 @@ function perdaganganAdmin({ stage = null, ringkas = null, log = [], periode = []
   return `${pesan}${unggah}${pratinjau}${periodeCard}${riwayat}`;
 }
 
+/**
+ * Tabel laporan bergaya laporan perdagangan BPS: 5 kolom periode + 6 kolom
+ * turunan (% perubahan, % peran, selisih). Nilai sudah dalam Ribu US$.
+ */
+function tabelPerdagangan(caption, baris, labelKolom, konteks) {
+  const { tahunLaporan, bulanLaporan, tahunPrev, bulanPrev } = konteks;
+  if (!baris || !baris.length) {
+    return `<section class="dashboard-card"><h2>${escapeHtml(caption)}</h2>
+  <div class="alert alert-info">Belum ada data untuk periode ini.</div></section>`;
+  }
+  const f = (v) => (v == null ? '&ndash;' : formatIdNumber(v, 2));
+  const pct = (now, prev) => (now == null || prev == null || prev === 0
+    ? '&ndash;' : formatIdNumber(((now - prev) / prev) * 100, 2));
+  const total = baris[0].nilai;
+  const peran = (v, base) => (v == null || base == null || base === 0
+    ? '&ndash;' : formatIdNumber((v / base) * 100, 2));
+  const selisih = (a, b) => (a == null || b == null ? '&ndash;' : formatIdNumber(a - b, 2));
+
+  const rows = baris.map((r) => {
+    const v = r.nilai;
+    const kelas = /^Total/i.test(r.label) ? ' class="total-row"' : '';
+    return `<tr${kelas}><td>${escapeHtml(r.label)}</td>
+  <td>${f(v[0])}</td><td>${f(v[1])}</td><td>${f(v[2])}</td><td>${f(v[3])}</td><td>${f(v[4])}</td>
+  <td>${pct(v[2], v[1])}</td><td>${pct(v[4], v[3])}</td>
+  <td>${peran(v[2], total[2])}</td><td>${peran(v[4], total[4])}</td>
+  <td>${selisih(v[2], v[1])}</td><td>${selisih(v[4], v[3])}</td></tr>`;
+  }).join('');
+
+  return `<section class="dashboard-card">
+  <h2>${escapeHtml(caption)}</h2>
+  <div class="table-scroll"><table class="data-table table-laporan">
+    <thead>
+      <tr><th rowspan="2">${escapeHtml(labelKolom)}</th>
+        <th>${escapeHtml(MONTH_NAMES[bulanLaporan - 1] || '')} ${tahunLaporan - 1}</th>
+        <th>${escapeHtml(MONTH_NAMES[bulanPrev - 1] || '')} ${tahunPrev}</th>
+        <th>${escapeHtml(MONTH_NAMES[bulanLaporan - 1] || '')} ${tahunLaporan}</th>
+        <th>Jan&ndash;${escapeHtml(MONTH_NAMES[bulanLaporan - 1] || '')} ${tahunLaporan - 1}</th>
+        <th>Jan&ndash;${escapeHtml(MONTH_NAMES[bulanLaporan - 1] || '')} ${tahunLaporan}</th>
+        <th colspan="2">% Perubahan</th><th colspan="2">% Peran thd Total</th><th colspan="2">Selisih</th></tr>
+      <tr><th colspan="5"></th><th>bulanan</th><th>kumulatif</th>
+        <th>bulan</th><th>kumulatif</th><th>bulanan</th><th>kumulatif</th></tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table></div>
+</section>`;
+}
+
+/** Isi tab Laporan: 4 tabel ekspor, 4 tabel impor, dan 2 tabel neraca. */
+function perdaganganLaporanView({ tahun, bulan, laporan }) {
+  const prev = bulan > 1 ? { tahun, bulan: bulan - 1 } : { tahun: tahun - 1, bulan: 12 };
+  const konteks = { tahunLaporan: tahun, bulanLaporan: bulan, tahunPrev: prev.tahun, bulanPrev: prev.bulan };
+
+  const f = (v) => (v == null ? '&ndash;' : formatIdNumber(v, 2));
+
+  const blokArus = (judul, blok) => `<section class="dashboard-card">
+  <div class="section-header"><h2>${escapeHtml(judul)}</h2></div>
+  <p class="side-note">Nilai dalam Ribu US$.</p>
+</section>
+${tabelPerdagangan(`Tabel 1. Ringkasan Perkembangan ${judul}`, blok.ringkasan, 'Uraian', konteks)}
+${tabelPerdagangan(`Tabel 2. ${judul} Menurut Golongan HS 2 Digit (10 terbesar)`, blok.hs2, 'Golongan Barang', konteks)}
+${tabelPerdagangan(`Tabel 3. ${judul} Menurut Negara ${judul === 'Ekspor' ? 'Tujuan' : 'Asal'} (10 terbesar)`, blok.negara, 'Negara', konteks)}
+${tabelPerdagangan(`Tabel 4. ${judul} Menurut Pelabuhan ${judul === 'Ekspor' ? 'Muat' : 'Bongkar'}`, blok.pelabuhan, 'Pelabuhan', konteks)}`;
+
+  const neraca = laporan.neraca;
+  const n = neraca.ringkasan;
+  const kpi = (label, v, sub) => `<div class="metric-card">
+  <span class="stat-label">${escapeHtml(label)}</span>
+  <span class="metric-value${v != null && v < 0 ? ' neg' : ''}">${f(v)}</span>
+  <span class="side-note">${escapeHtml(sub)}</span></div>`;
+  const statusNeraca = (v) => (v == null ? '&ndash;' : (v >= 0 ? 'Surplus' : 'Defisit'));
+
+  const barisNeraca = n.map((r) => `<tr${/^Total/i.test(r.label) ? ' class="total-row"' : ''}>
+  <td>${escapeHtml(r.label)}</td>
+  <td>${f(r.nilai[0])}</td><td>${f(r.nilai[1])}</td><td>${f(r.nilai[2])}</td>
+  <td>${f(r.nilai[3])}</td><td>${f(r.nilai[4])}</td>
+  <td>${statusNeraca(r.nilai[2])}</td><td>${statusNeraca(r.nilai[4])}</td>
+  <td>${r.nilai[2] == null || r.nilai[1] == null ? '&ndash;' : formatIdNumber(r.nilai[2] - r.nilai[1], 2)}</td>
+  <td>${r.nilai[4] == null || r.nilai[3] == null ? '&ndash;' : formatIdNumber(r.nilai[4] - r.nilai[3], 2)}</td></tr>`).join('');
+
+  const rekap = neraca.rekap.map((r) => `<tr>
+  <td>${escapeHtml(MONTH_NAMES[r.bulan - 1])}</td>
+  <td>${f(r.eksporLast)}</td><td>${f(r.imporLast)}</td><td>${f(r.neracaLast)}</td>
+  <td>${f(r.eksporNow)}</td><td>${f(r.imporNow)}</td><td>${f(r.neracaNow)}</td>
+  <td>${f(r.kumLast)}</td><td>${f(r.kumNow)}</td></tr>`).join('');
+
+  return `<section class="dashboard-card">
+  <div class="section-header"><h2>Neraca Perdagangan</h2></div>
+  <div class="metric-grid">
+    ${kpi(`Neraca ${MONTH_NAMES[bulan - 1]} ${tahun}`, n[0].nilai[2], statusNeraca(n[0].nilai[2]))}
+    ${kpi(`Neraca Jan–${MONTH_NAMES[bulan - 1]} ${tahun}`, n[0].nilai[4], statusNeraca(n[0].nilai[4]))}
+    ${kpi(`Neraca ${MONTH_NAMES[bulan - 1]} ${tahun - 1}`, n[0].nilai[0], statusNeraca(n[0].nilai[0]))}
+  </div>
+</section>
+<section class="dashboard-card">
+  <h2>Tabel 1. Ringkasan Neraca Perdagangan</h2>
+  <div class="table-scroll"><table class="data-table table-laporan">
+    <thead><tr><th>Uraian</th>
+      <th>${escapeHtml(MONTH_NAMES[bulan - 1])} ${tahun - 1}</th>
+      <th>${escapeHtml(MONTH_NAMES[prev.bulan - 1])} ${prev.tahun}</th>
+      <th>${escapeHtml(MONTH_NAMES[bulan - 1])} ${tahun}</th>
+      <th>Jan&ndash;${escapeHtml(MONTH_NAMES[bulan - 1])} ${tahun - 1}</th>
+      <th>Jan&ndash;${escapeHtml(MONTH_NAMES[bulan - 1])} ${tahun}</th>
+      <th>Status bulan</th><th>Status kumulatif</th><th>Selisih bulanan</th><th>Selisih kumulatif</th>
+    </tr></thead>
+    <tbody>${barisNeraca}</tbody>
+  </table></div>
+</section>
+<section class="dashboard-card">
+  <h2>Tabel 2. Rekap Bulanan Ekspor, Impor, dan Neraca</h2>
+  <div class="table-scroll"><table class="data-table table-laporan">
+    <thead>
+      <tr><th rowspan="2">Bulan</th><th colspan="3">${tahun - 1}</th><th colspan="3">${tahun}</th>
+        <th colspan="2">Neraca kumulatif</th></tr>
+      <tr><th>Ekspor</th><th>Impor</th><th>Neraca</th><th>Ekspor</th><th>Impor</th><th>Neraca</th>
+        <th>${tahun - 1}</th><th>${tahun}</th></tr>
+    </thead>
+    <tbody>${rekap}</tbody>
+  </table></div>
+  <p class="side-note">Ekspor berbasis provinsi asal barang (PROVORIG), pelabuhan muat berbasis POD;
+    impor berbasis KPPBC. Neraca per provinsi adalah perkiraan.</p>
+</section>
+${blokArus('Ekspor', laporan.ekspor)}
+${blokArus('Impor', laporan.impor)}`;
+}
+
 export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, tahun, bulan,
-  ringkasan, seri, hs2, negara, pelabuhan, periods, admin = null }) {
+  ringkasan, seri, hs2, negara, pelabuhan, periods, admin = null, laporan = null }) {
   const f2 = (v) => formatIdNumber(v ?? 0, 2);
   const bulanName = MONTH_NAMES[bulan - 1] || '';
   const params = `provinsi=${encodeURIComponent(province)}&tahun=${tahun}&bulan=${bulan}`;
   const tabs = [
     { label: 'Ringkasan', href: `/perdagangan?tab=ringkasan&${params}`, active: tab === 'ringkasan' },
+    { label: 'Laporan', href: `/perdagangan?tab=laporan&${params}`, active: tab === 'laporan' },
     { label: 'Rincian', href: `/perdagangan?tab=rincian&${params}`, active: tab === 'rincian' },
     ...(user.role === 'admin'
       ? [{ label: 'Admin & Unggah', href: '/perdagangan?tab=admin', active: tab === 'admin' }]
@@ -825,7 +951,9 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
     });
   }
 
-  if (!ringkasan) {
+  // Tab Laporan memakai `laporan`, bukan `ringkasan`.
+  const adaIsi = tab === 'laporan' ? Boolean(laporan) : Boolean(ringkasan);
+  if (!adaIsi) {
     return layout({
       title: 'Perdagangan Luar Negeri', user, section: 'perdagangan',
       crumbs: moduleCrumbs('Perdagangan', '/perdagangan', tab),
@@ -841,9 +969,12 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
   <span class="side-note">${escapeHtml(sub)}</span>
 </div>`;
 
-  const neraca = (ringkasan.bulanIni.ekspor - ringkasan.bulanIni.impor) / 1000;
-  const neracaKum = (ringkasan.kumulatif.ekspor - ringkasan.kumulatif.impor) / 1000;
-  const metrik = `<div class="metric-grid">
+  // KPI hanya untuk tab Ringkasan; tab Laporan punya kartu neraca sendiri.
+  let metrik = '';
+  if (ringkasan) {
+    const neraca = (ringkasan.bulanIni.ekspor - ringkasan.bulanIni.impor) / 1000;
+    const neracaKum = (ringkasan.kumulatif.ekspor - ringkasan.kumulatif.impor) / 1000;
+    metrik = `<div class="metric-grid">
   ${kpi('Ekspor (Ribu US$)', f2(ringkasan.bulanIni.ekspor / 1000),
     `Migas ${f2(ringkasan.bulanIni.eksporMigas / 1000)} · Nonmigas ${f2(ringkasan.bulanIni.eksporNonMigas / 1000)}`)}
   ${kpi('Impor (Ribu US$)', f2(ringkasan.bulanIni.impor / 1000),
@@ -853,6 +984,7 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
   ${kpi(`Kumulatif Jan–${bulanName}`, f2(neracaKum),
     `Ekspor ${f2(ringkasan.kumulatif.ekspor / 1000)} · Impor ${f2(ringkasan.kumulatif.impor / 1000)}`)}
 </div>`;
+  }
 
   const grafik = `<section class="dashboard-card">
   <h2>Perkembangan Bulanan ${escapeHtml(String(tahun))}</h2>
@@ -892,7 +1024,9 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
   </form>
 </section>`;
 
-  const isi = tab === 'rincian'
+  const isi = tab === 'laporan' && laporan
+    ? perdaganganLaporanView({ tahun, bulan, laporan })
+    : tab === 'rincian'
     ? tabelPeran('Golongan Barang Ekspor (HS 2 digit)', hs2?.ekspor, 'Nilai FOB')
       + tabelPeran('Golongan Barang Impor (HS 2 digit)', hs2?.impor, 'Nilai CIF')
       + tabelPeran('Negara Tujuan Utama', negara?.ekspor, 'Nilai FOB')

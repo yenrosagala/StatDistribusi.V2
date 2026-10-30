@@ -30,6 +30,7 @@ import { EXPORT_MIME, checkExporter, exportFileName, runExport } from './export.
 import {
   PERDAGANGAN_PROVINSI, perdaganganHs2, perdaganganNegara, perdaganganPelabuhan,
   perdaganganPeriods, perdaganganRingkasan, perdaganganSeri, perdaganganEtlLog,
+  perdaganganLaporan,
   perdaganganRingkasPeriode,
 } from './perdagangan.js';
 import { parsePerdaganganZip, savePerdagangan } from './etl-perdagangan.js';
@@ -908,7 +909,7 @@ const requestHandler = async (req, res) => {
 /** Halaman modul Perdagangan Luar Negeri. */
 async function buildPerdagangan(session, url) {
   const wantTab = url.searchParams.get('tab');
-  const allowed = ['ringkasan', 'rincian'];
+  const allowed = ['ringkasan', 'laporan', 'rincian'];
   if (wantTab === 'admin' && session.role === 'admin') allowed.push('admin');
   const tab = allowed.includes(wantTab) ? wantTab : 'ringkasan';
 
@@ -940,17 +941,18 @@ async function buildPerdagangan(session, url) {
   const wantMonth = Number(url.searchParams.get('bulan'));
   const bulan = monthsForYear.includes(wantMonth) ? wantMonth : monthsForYear.at(-1) || latest.bulan;
 
-  const [ringkasan, seri, hs2, negara, pelabuhan] = await Promise.all([
+  const [ringkasan, seri, hs2, negara, pelabuhan, laporan] = await Promise.all([
     perdaganganRingkasan(province, tahun, bulan),
     perdaganganSeri(province, tahun),
     perdaganganHs2(province, tahun, bulan),
     perdaganganNegara(province, tahun, bulan),
     perdaganganPelabuhan(province, tahun, bulan),
+    tab === 'laporan' ? perdaganganLaporan(province, tahun, bulan) : Promise.resolve(null),
   ]);
 
   return perdaganganPage({
     user: session, tab, provinsi: PERDAGANGAN_PROVINSI, province,
-    tahun, bulan, ringkasan, seri, hs2, negara, pelabuhan, periods,
+    tahun, bulan, ringkasan, seri, hs2, negara, pelabuhan, periods, laporan,
   });
 }
 
