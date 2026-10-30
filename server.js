@@ -63,12 +63,18 @@ const NARRATIVE_SERVICE_URL = (process.env.EXPORT_SERVICE_URL || 'http://127.0.0
 const NARRATIVE_TIMEOUT_MS = Number(process.env.NARRATIVE_TIMEOUT_MS || 180_000);
 // ROOT_DIR kept for reference: assets are served from public/ now.
 
+// Sandi dibaca dari env. Nama lama (ADMIN_PASSWORD) tetap dihormati karena
+// berkas .env dan app.py Streamlit memakai nama itu -- sebelumnya Node hanya
+// membaca LOGIN_ADMIN_PASSWORD sehingga sandi yang sudah diatur diabaikan dan
+// aplikasi diam-diam memakai sandi bawaan.
+const envSandi = (nama) => process.env[`LOGIN_${nama}_PASSWORD`] || process.env[`${nama}_PASSWORD`] || null;
+
 const USERS = {
-  admin: { password: process.env.LOGIN_ADMIN_PASSWORD || 'admin123', role: 'admin', name: 'Database Administrator' },
-  user: { password: process.env.LOGIN_USER_PASSWORD || 'user123', role: 'user', name: 'General Analyst' },
+  admin: { password: envSandi('ADMIN') || 'admin123', role: 'admin', name: 'Database Administrator' },
+  user: { password: envSandi('USER') || 'user123', role: 'user', name: 'General Analyst' },
   // Report-only analyst: tables, charts and the justification dialog. No
   // admin tab, no exports (enforced server-side, not just hidden in the UI).
-  rekon: { password: process.env.LOGIN_REKON_PASSWORD || 'rekon123', role: 'rekon', name: 'Analis Rekon' },
+  rekon: { password: envSandi('REKON') || 'rekon123', role: 'rekon', name: 'Analis Rekon' },
 };
 
 // Single source of truth for which tabs a role may open.
@@ -1692,6 +1698,15 @@ const ON_VERCEL = Boolean(process.env.VERCEL);
 if (!ON_VERCEL) {
   server.listen(PORT, () => {
     console.log(`Dashboard Node berjalan di http://localhost:${PORT}`);
+  // Peringatkan bila masih memakai sandi bawaan: cukup berbahaya untuk aplikasi
+  // yang bisa menulis ke database.
+  const bawaan = Object.entries(USERS)
+    .filter(([, u]) => envSandi(u.role.toUpperCase()) === null)
+    .map(([nama]) => nama);
+  if (bawaan.length) {
+    console.warn(`[auth] PERINGATAN: sandi bawaan dipakai untuk: ${bawaan.join(', ')}. `
+      + 'Setel LOGIN_<PERAN>_PASSWORD (atau ADMIN_PASSWORD dll.) di .env.');
+  }
   });
 
   // Surface a broken export path at startup instead of on first click.
