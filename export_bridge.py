@@ -634,6 +634,7 @@ def build_xlsx_perdagangan(payload):
 
     from modules.database import get_engine
     from modules.etl_engine import MONTH_NAMES
+    from modules.pelabuhan_nama import label as label_pelabuhan
     from modules.perdagangan_data import kumpulkan_perdagangan
     from modules.perdagangan_grafik import grafik_batang
 
@@ -728,7 +729,7 @@ def build_xlsx_perdagangan(payload):
         for kunci, label, pelabel in (
                 ("hs2", "HS 2 Digit", label_golongan),
                 ("negara", "Negara", label_negara),
-                ("pelabuhan_resmi", "Pelabuhan Muat", lambda k: str(k))):
+                ("pelabuhan_resmi", "Pelabuhan Muat", label_pelabuhan)):
             daftar = data.get(f"{arus}_{kunci}")
             if not daftar:
                 continue

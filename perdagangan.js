@@ -144,7 +144,9 @@ export async function perdaganganPelabuhan(prov, tahun, bulan) {
      GROUP BY pelabuhan ORDER BY 2 DESC`,
     [prov, BASIS_IMPOR, tahun, bulan], 'pelabuhan impor');
   const map = (rows) => rows.slice(0, 10).map((r) => ({
-    nama: r.pelabuhan || '-',
+    // Kode pelabuhan (mis. 35563) diubah ke nama lewat master yang sama
+    // dengan halaman Laporan; kode tak dikenal ditampilkan apa adanya.
+    nama: namaPelabuhan(r.pelabuhan),
     nilai: num(r.nilai) / 1000,
   }));
   return { ekspor: map(ekspor), impor: map(impor) };
