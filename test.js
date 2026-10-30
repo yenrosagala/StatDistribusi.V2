@@ -559,4 +559,24 @@ test('the perdagangan export button targets the idml route', () => {
   assert.ok(html.includes('name="bulan" value="Agustus"'), 'bulan dikirim sebagai nama');
   assert.equal(exportFileName('idml-exim', { prov: 'Papua Selatan', bln: 'Agustus', thn: 2026 }),
     'BRS_Exim_Papua_Selatan_Agustus_2026.zip');
+});test('the landing page lists all three modules as full-height cards', () => {
+  const html = landingPage({
+    user: { name: 'Admin', role: 'admin' },
+    pari: { periods: 21, provinces: 4, last: { thn: 2026, bln: 'September' } },
+    trans: { periods: 21, last: { thn: 2026, bln: 'September' } },
+    dagang: { periods: 2, last: { thn: 2026, bln: 'September' } },
+  });
+  assert.ok(html.includes('class="landing-screen"'), 'wrapper layar penuh');
+  assert.equal((html.match(/class="landing-card"/g) || []).length, 3, 'tiga kartu modul');
+  ['Pariwisata', 'Transportasi', 'Perdagangan'].forEach((label) => {
+    assert.ok(html.includes(`>${label}</span>`), `kartu ${label} ada`);
+  });
+  assert.ok(html.includes('href="/perdagangan"'), 'kartu perdagangan menuju modulnya');
+});
+
+test('Perdagangan is no longer a sidebar link for admins', () => {
+  const html = landingPage({ user: { name: 'Admin', role: 'admin' } });
+  const nav = /<nav class="side-nav">([\s\S]*?)<\/nav>/.exec(html)[1];
+  assert.ok(!nav.includes('/perdagangan'), 'sidebar tidak lagi memuat Perdagangan');
+  assert.ok(nav.includes('href="/"'), 'Beranda tetap ada');
 });

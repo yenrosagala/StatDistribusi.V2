@@ -134,12 +134,13 @@ function layout({ title, body, user, section, scripts = '', crumbs = null }) {
 
   const nav = [
     `<a class="side-link${section === 'home' ? ' active' : ''}" href="/">${icon('home')} Beranda</a>`,
-    // Perdagangan is read-only for every role, so it is always listed.
-    `<a class="side-link${section === 'perdagangan' ? ' active' : ''}" href="/perdagangan">${icon('building')} Perdagangan</a>`,
-    // Report-only viewers still need a way to switch modules.
+    // Modul dipilih dari beranda (tiga kartu), jadi sidebar hanya berisi
+    // tautan modul yang sedang dibuka. Penampil laporan tetap butuh jalan
+    // berpindah modul tanpa kembali ke beranda.
     ...(user.role === 'rekon' ? [
       `<a class="side-link${section === 'pariwisata' ? ' active' : ''}" href="/pariwisata?tab=report">${icon('building')} Pariwisata</a>`,
       `<a class="side-link${section === 'transportasi' ? ' active' : ''}" href="/transportasi?tab=report">${icon('plane')} Transportasi</a>`,
+      `<a class="side-link${section === 'perdagangan' ? ' active' : ''}" href="/perdagangan">${icon('building')} Perdagangan</a>`,
     ] : []),
     user.role === 'admin'
       ? `<a class="side-link${section === 'admin' ? ' active' : ''}" href="${adminHref}">${icon('lock')} Admin</a>`
@@ -195,7 +196,7 @@ ${narrativeScript()}${growthScript()}${summaryScript()}${adminTabsScript()}
 </html>`;
 }
 
-export function landingPage({ user, pari = {}, trans = {} }) {
+export function landingPage({ user, pari = {}, trans = {}, dagang = {} }) {
   const periodText = (p) => (p && p.thn ? `${p.bln} ${p.thn}` : 'Belum ada data');
 
   const card = (o) => `<a class="landing-card" href="${o.href}">
@@ -208,9 +209,11 @@ export function landingPage({ user, pari = {}, trans = {} }) {
     <span class="landing-cta">Buka ${escapeHtml(o.title)} &rarr;</span>
   </a>`;
 
-  const body = `<div class="landing-hero">
-  <h1 class="landing-h1">Pariwisata &amp; Transportasi Papua</h1>
-  <p class="landing-sub">Dashboard statistik BPS Provinsi Papua. Pilih modul untuk mulai menjelajah.</p>
+  // Tiga modul, masing-masing satu kartu yang mengisi tinggi layar.
+  const body = `<div class="landing-screen">
+<div class="landing-hero">
+  <h1 class="landing-h1">Dashboard Statistik Papua</h1>
+  <p class="landing-sub">Pilih salah satu modul untuk mulai menjelajah.</p>
 </div>
 <div class="landing-grid">
   ${card({
@@ -231,8 +234,18 @@ export function landingPage({ user, pari = {}, trans = {} }) {
       ['Terakhir', periodText(trans.last)],
     ],
   })}
+  ${card({
+    href: '/perdagangan', icon: icon('ship'), title: 'Perdagangan',
+    desc: 'Nilai ekspor dan impor serta neraca perdagangan empat provinsi di Tanah Papua.',
+    stats: [
+      ['Periode', String(dagang.periods ?? 0)],
+      ['Ekspor & Impor', 'Ribu US$'],
+      ['Terakhir', periodText(dagang.last)],
+    ],
+  })}
 </div>
-<p class="landing-greet">Masuk sebagai <b>${escapeHtml(user.name)}</b> &middot; peran ${escapeHtml(user.role.toUpperCase())}</p>`;
+<p class="landing-greet">Masuk sebagai <b>${escapeHtml(user.name)}</b> &middot; peran ${escapeHtml(user.role.toUpperCase())}</p>
+</div>`;
 
   return layout({ title: 'Beranda', body, user, section: 'home' });
 }

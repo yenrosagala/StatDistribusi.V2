@@ -686,7 +686,21 @@ async function buildLanding(session) {
   } catch (err) {
     console.warn('[landing] transportasi tidak terbaca:', err.message);
   }
-  return landingPage({ user: session, pari, trans });
+  // Statistik ringkas modul Perdagangan untuk kartu di beranda.
+  let dagang = { periods: 0, provinces: 0, rows: 0, last: null };
+  try {
+    const periods = await perdaganganPeriods();
+    dagang = {
+      periods: periods.length,
+      provinces: PERDAGANGAN_PROVINSI.length,
+      last: periods.length
+        ? { thn: periods.at(-1).tahun, bln: MONTH_NAMES[periods.at(-1).bulan - 1] }
+        : null,
+    };
+  } catch (err) {
+    console.warn('[landing] perdagangan tidak terbaca:', err.message);
+  }
+  return landingPage({ user: session, pari, trans, dagang });
 }
 
 async function buildPariwisata(session, url) {  const rows = await pariwisataInfo();
