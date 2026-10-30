@@ -1934,16 +1934,42 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
 </section>`;
   }).join('')).join('');
 
-  const wisnus = report.wisnus ? wisnusCard(report, configs) : '';
+  const wisnus = report.wisnus ? wisnusCard(report, configs, isAdmin) : '';
   const canExport = user.role === 'admin' || user.role === 'user';
   return { html: `${head}${cards}${wisnus}${canExport ? pariwisataExportCard(report) : ''}`, configs };
+}
+
+/**
+ * Kotak narasi AI untuk kartu Wisnus. Aturannya sama dengan narasi indikator
+ * lain: admin membuat/meregenerasi, hasilnya disimpan per provinsi+periode.
+ */
+function narasiWisnus(report, isAdmin) {
+  const teks = report.wisnus && report.wisnus.narasi;
+  const fields = `<input type="hidden" name="provinsi" value="${escapeHtml(report.province)}">
+    <input type="hidden" name="tahun" value="${report.year}">
+    <input type="hidden" name="bulan" value="${report.month}">`;
+  if (teks) {
+    const paras = String(teks).split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
+    const regen = isAdmin
+      ? `<form method="post" action="/api/wisnus/narrative" class="inline-form">${fields}
+          <button class="btn btn-secondary" type="submit">\u{1F504} Regenerasi</button></form>`
+      : '';
+    return `<div class="ai-note"><strong>\u{1F916} Narasi AI Wisnus:</strong>${paras}
+      <div class="narrative-actions">${regen}</div></div>`;
+  }
+  if (isAdmin) {
+    return `<div class="alert alert-info">Narasi AI Wisnus belum dibuat.
+      <form method="post" action="/api/wisnus/narrative" class="inline-form">${fields}
+        <button class="btn btn-primary" type="submit">\u{1F916} Buat Narasi AI</button></form></div>`;
+  }
+  return `<div class="alert alert-info">Narasi AI Wisnus belum tersedia. Hubungi admin untuk membuatnya.</div>`;
 }
 
 /**
  * Kartu Kunjungan Wisnus (halaman 8 BRS): seri bulanan tahun lalu vs tahun ini,
  * angka bulan berjalan/kumulatif, dan kab/kota tujuan teratas.
  */
-function wisnusCard(report, configs) {
+function wisnusCard(report, configs, isAdmin = false) {
   const w = report.wisnus || {};
   const seri = w.seri || [];
   const tahunIni = report.year;
@@ -2018,6 +2044,7 @@ function wisnusCard(report, configs) {
   return `<section class="dashboard-card report-card">
   <div class="card-header"><h3>Kunjungan Wisatawan Nusantara (Wisnus)</h3>
     <button type="button" class="btn btn-ghost" style="width:auto;font-size:12px;padding:6px 10px" onclick="window.unduhGrafik('wisnus-seri', 'kunjungan-wisnus.png')">&#128229; Unduh Grafik (PNG)</button></div>
+  ${narasiWisnus(report, isAdmin)}
   <div class="ai-note">Kunjungan Wisnus ${MONTH_NAMES[bulan - 1]} ${tahunIni} sebanyak <b>${formatIdNumber(kini, 0)}</b> perjalanan,
     ${pct(kini, sblm) === null ? 'tanpa pembanding bulan sebelumnya' : `berubah ${formatPct(pct(kini, sblm))} dibanding ${MONTH_NAMES[bulan - 2] || ''} ${tahunIni}`};
     year-on-year ${formatPct(pct(kini, tahunLaluBulan))}. Kumulatif Januari–${MONTH_NAMES[bulan - 1]} ${tahunIni}

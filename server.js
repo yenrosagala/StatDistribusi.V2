@@ -665,6 +665,9 @@ async function loadReport(url, info, session = { role: 'admin' }) {
   }
   const ref = new Map(refRows.map((r) => [`${r.jenis_akomodasi}|${Number(r.year)}|${Number(r.month)}`, r]));
   const narrativeBy = new Map(narratives.map((r) => [`${r.jenis_akomodasi}|${r.indicator}`, r.narrative]));
+  // Narasi Wisnus disimpan dengan penanda jenis_akomodasi='wisnus' &
+  // indicator='wisnus' agar tidak bentrok dengan narasi TPK/RLMTGAB.
+  if (report.wisnus) report.wisnus.narasi = narrativeBy.get('wisnus|wisnus') || null;
   const current = rows.filter((r) => Number(r.year) === year && Number(r.month) === month);
   if (!current.length) return report;
 
@@ -1371,6 +1374,32 @@ async function buildPerdagangan(session, url) {
         return json(res, payload, payload.error ? 500 : 200);
       } catch (err) {
         return json(res, { error: `Narasi tidak dapat dibuat: ${err.message}` }, 500);
+      }
+    }
+
+    // Narasi AI khusus kartu Wisnus (dua grafik: seri bulanan + tujuan).
+    if (url.pathname === '/api/wisnus/narrative' && req.method === 'POST') {
+      if (session.role !== 'admin') return sendHtml(res, errorPage('Akses admin diperlukan.'), 403);
+      const form = new URLSearchParams(await readBody(req));
+      const provinsi = form.get('provinsi') || '';
+      const tahun = Number(form.get('tahun'));
+      const bulan = Number(form.get('bulan'));
+      const balik = `/pariwisata?tab=report&provinsi=${encodeURIComponent(provinsi)}`
+        + `&tahun=${tahun}&bulan=${encodeURIComponent(MONTH_NAMES[bulan - 1] || '')}`;
+      if (!TARGET_PROVINCES.includes(provinsi)
+        || !Number.isInteger(tahun) || !(bulan >= 1 && bulan <= 12)) {
+        return redirect(res, flash(balik, 'Provinsi atau periode tidak valid.', false));
+      }
+      try {
+        const payload = await runNarrativeBridge({
+          kind: 'wisnus', provinsi, tahun, bulan, action: 'generate',
+        });
+        if (payload && payload.error) {
+          return redirect(res, flash(balik, `Narasi gagal dibuat: ${payload.error}`, false));
+        }
+        return redirect(res, flash(balik, 'Narasi Wisnus berhasil dibuat.', true));
+      } catch (err) {
+        return redirect(res, flash(balik, `Narasi gagal dibuat: ${err.message}`, false));
       }
     }
 
