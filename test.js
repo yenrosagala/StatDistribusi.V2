@@ -241,7 +241,7 @@ test('exportFileName keeps province and period in every download name', () => {
 // and must stay hidden from roles that cannot export at all.
 // ---------------------------------------------------------------------------
 import { readFileSync } from 'node:fs';
-import { landingPage, setExportAvailability, transportasiPage } from './views.js';
+import { landingPage, perdaganganPage, setExportAvailability, transportasiPage } from './views.js';
 
 const viewsSource = readFileSync(new URL('./views.js', import.meta.url), 'utf8');
 
@@ -526,4 +526,37 @@ test('toEkspor / toImpor map the DBF columns', () => {
 
 test('readZip rejects a buffer that is not a ZIP', () => {
   assert.throws(() => readZip(Buffer.from('bukan zip')), /ZIP/);
+});test('the perdagangan admin page exposes the ZIP upload form', () => {
+  const html = perdaganganPage({
+    user: { name: 'Admin', role: 'admin' }, tab: 'admin',
+    provinsi: ['Papua'], province: 'Papua', tahun: 2026, bulan: 8, periods: [{ tahun: 2026, bulan: 8 }],
+    admin: {
+      stage: 'abc123',
+      ringkas: [{ prov: 'Papua', kode: '94', ekspor: 401, impor: 13,
+        validasi: [{ arus: 'ekspor', basis: 'PROVORIG', dicocokkan: true }], warnings: [] }],
+      log: [], periode: [{ tahun: 2026, bulan: 8, ekspor: 406, impor: 1257 }], flash: null,
+    },
+  });
+  assert.ok(html.includes('action="/perdagangan/admin/upload"'), 'form unggah ZIP harus ada');
+  assert.ok(html.includes('action="/perdagangan/admin/save"'), 'tombol simpan pratinjau harus ada');
+  assert.ok(html.includes('Simpan ke Database'), 'label simpan');
+  assert.ok(html.includes('Papua Selatan') || html.includes('Papua'), 'ringkasan provinsi tampil');
+});
+
+test('the perdagangan export button targets the idml route', () => {
+  const html = perdaganganPage({
+    user: { name: 'Admin', role: 'admin' }, tab: 'ringkasan',
+    provinsi: ['Papua Selatan'], province: 'Papua Selatan', tahun: 2026, bulan: 8,
+    periods: [{ tahun: 2026, bulan: 8 }],
+    ringkasan: {
+      bulanIni: { ekspor: 0, eksporMigas: 0, eksporNonMigas: 0, impor: 5318732.79, imporMigas: 0, imporNonMigas: 5318732.79 },
+      kumulatif: { ekspor: 0, impor: 5318732.79 },
+    },
+    seri: { ekspor: [], impor: [], neraca: [] }, hs2: { ekspor: [], impor: [] },
+    negara: { ekspor: [], impor: [] }, pelabuhan: { ekspor: [], impor: [] },
+  });
+  assert.ok(html.includes('action="/export/perdagangan/idml"'), 'form unduh harus menuju rute idml');
+  assert.ok(html.includes('name="bulan" value="Agustus"'), 'bulan dikirim sebagai nama');
+  assert.equal(exportFileName('idml-exim', { prov: 'Papua Selatan', bln: 'Agustus', thn: 2026 }),
+    'BRS_Exim_Papua_Selatan_Agustus_2026.zip');
 });

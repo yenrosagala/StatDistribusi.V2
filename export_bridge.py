@@ -594,12 +594,55 @@ def build_idml_pariwisata(payload):
         paket_zip(result.idml_bytes, name, template_dir=Path(template_path).parent), result.warnings)
 
 
+NEGARA_LABEL = {
+    "CN": "Tiongkok", "JP": "Jepang", "US": "Amerika Serikat", "AU": "Australia",
+    "SG": "Singapura", "MY": "Malaysia", "KR": "Korea Selatan", "IN": "India",
+    "NZ": "Selandia Baru", "PG": "Papua Nugini", "TH": "Thailand", "VN": "Vietnam",
+    "PH": "Filipina", "HK": "Hong Kong", "TW": "Taiwan", "DE": "Jerman",
+    "GB": "Inggris", "NL": "Belanda", "FR": "Prancis", "IT": "Italia", "ES": "Spanyol",
+}
+
+
+def build_idml_exim(payload):
+    """Isi template BRS Ekspor-Impor dengan data dari Supabase."""
+    from modules.database import get_engine
+    from modules.exim_export import isi_template_exim
+    from modules.indesign_export import paket_zip
+    from modules.perdagangan_data import kumpulkan_perdagangan
+
+    prov, thn = payload["prov"], int(payload["thn"])
+    # bln datang sebagai nama bulan ("Agustus") atau angka; normalkan.
+    bln_raw = payload["bln"]
+    bln = int(bln_raw) if str(bln_raw).isdigit() else MONTH_NUMBER[str(bln_raw)]
+    tpl = (Path(__file__).resolve().parent / "templates"
+           / "BRS Exim Papua Selatan Oktober 2026" / "BRS_Exim_Papua_Selatan.idml")
+    if not tpl.exists():
+        raise SystemExit(f"Template BRS Exim tidak ditemukan: {tpl}")
+
+    def label_dari_kode(kode):
+        kode = str(kode)
+        if kode.isdigit() and len(kode) == 2:
+            return f"HS{kode}"
+        return NEGARA_LABEL.get(kode.upper(), kode)
+
+    data = kumpulkan_perdagangan(get_engine(), prov, thn, bln)
+    if not (data.get("ringkasan_ekspor") or data.get("ringkasan_impor")):
+        raise SystemExit(f"Tidak ada data perdagangan untuk {prov} {bln} {thn}.")
+
+    warnings = []
+    idml_bytes, warnings = isi_template_exim(tpl.read_bytes(), data, label_dari_kode, warnings)
+    nama = f"BRS_Exim_{prov.replace(' ', '_')}_{bln}_{thn}.idml"
+    return _paket_dengan_peringatan(
+        paket_zip(idml_bytes, nama, template_dir=tpl.parent), warnings)
+
+
 BUILDERS = {
     "pptx": build_pptx,
     "docx": build_docx,
     "xlsx-transport": build_xlsx_transport,
     "xlsx-pariwisata": build_xlsx_pariwisata,
     "idml-transport": build_idml_transport,
+    "idml-exim": build_idml_exim,
     "idml-pariwisata": build_idml_pariwisata,
 }
 

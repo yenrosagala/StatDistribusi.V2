@@ -149,4 +149,24 @@ export async function perdaganganPelabuhan(prov, tahun, bulan) {
   return { ekspor: map(ekspor), impor: map(impor) };
 }
 
+/** Riwayat unggahan terakhir, termasuk hasil validasi terhadap berkas kontrol. */
+export async function perdaganganEtlLog(limit = 20) {
+  const rows = await safeRows(
+    `SELECT tahun, bulan, arus, prov, basis, sumber, baris, dicocokkan, loaded_at
+     FROM etl_log_perdagangan ORDER BY loaded_at DESC LIMIT $1`, [limit], 'etl log');
+  return rows;
+}
+
+/** Ringkasan cepat untuk halaman admin: berapa baris per periode. */
+export async function perdaganganRingkasPeriode() {
+  const rows = await safeRows(
+    `SELECT tahun, bulan,
+            (SELECT count(*) FROM fact_ekspor e WHERE e.tahun=f.tahun AND e.bulan=f.bulan)::int AS ekspor,
+            (SELECT count(*) FROM fact_impor i WHERE i.tahun=f.tahun AND i.bulan=f.bulan)::int AS impor
+     FROM (SELECT DISTINCT tahun, bulan FROM fact_ekspor
+           UNION SELECT DISTINCT tahun, bulan FROM fact_impor) f
+     ORDER BY tahun DESC, bulan DESC`, [], 'ringkas periode');
+  return rows;
+}
+
 export const PERDAGANGAN_PROVINSI = ['Papua', 'Papua Selatan', 'Papua Tengah', 'Papua Pegunungan'];

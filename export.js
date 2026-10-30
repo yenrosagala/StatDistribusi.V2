@@ -27,6 +27,7 @@ export const EXPORT_MIME = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'idml-transport': 'application/zip',
   'idml-pariwisata': 'application/zip',
+  'idml-exim': 'application/zip',
 };
 
 export function exportFileName(kind, payload) {
@@ -36,6 +37,7 @@ export function exportFileName(kind, payload) {
   if (kind === 'xlsx-transport') return `Tabel_Transportasi_${prov}_${period}.xlsx`;
   if (kind === 'xlsx-pariwisata') return `Tabel_Pariwisata_${prov}_${period}.xlsx`;
   if (kind === 'docx') return `Master_Laporan_Transportasi_${prov}_${period}.docx`;
+  if (kind === 'idml-exim') return `BRS_Exim_${prov}_${period}.zip`;
   if (kind === 'idml-transport') return `BRS_Transportasi_${prov}_${period}.zip`;
   return `BRS_Pariwisata_${prov}_${period}.zip`;
 }

@@ -700,14 +700,88 @@ export function transportasiPage({ user, periods, selected, sections, tab = 'das
  * Halaman modul Perdagangan Luar Negeri (ekspor-impor).
  * Nilai dari server dalam US$; ditampilkan dalam Ribu US$ seperti tabel BPS.
  */
+/**
+ * Panel admin modul Perdagangan: unggah ZIP DBF bulanan, lihat hasil validasi
+ * terhadap berkas kontrol, dan riwayat unggahan.
+ */
+function perdaganganAdmin({ stage = null, ringkas = null, log = [], periode = [], flash = null }) {
+  const pesan = flash
+    ? `<div class="alert ${flash.ok ? 'alert-info' : 'alert-warn'}">${escapeHtml(flash.text)}</div>`
+    : '';
+
+  const unggah = `<section class="dashboard-card">
+  <h2>Unggah Data Perdagangan (ZIP DBF)</h2>
+  <p class="side-note">Berkas ZIP berisi DBF Bea Cukai/BPS untuk satu bulan, semua provinsi
+    (pola nama: <code>&lt;kode prov&gt;_Atap_ekspor_&lt;MMYY&gt;_...DBF</code> dan
+    <code>&lt;kode prov&gt;_impor_atap_&lt;mmYY&gt;.DBF</code>). Setiap provinsi divalidasi
+    terhadap berkas <code>_total.DBF</code>; provinsi yang tidak cocok tidak disimpan.</p>
+  <form method="post" action="/perdagangan/admin/upload" class="admin-form" enctype="multipart/form-data">
+    <label>Berkas ZIP <input type="file" name="zip" accept=".zip" required></label>
+    <button class="btn btn-primary" type="submit">Unggah &amp; Periksa</button>
+  </form>
+</section>`;
+
+  const pratinjau = !stage ? '' : `<section class="dashboard-card">
+  <h2>Hasil Pemeriksaan</h2>
+  ${(ringkas || []).map((p) => `
+    <div class="table-scroll" style="margin-bottom:14px">
+      <table class="data-table">
+        <thead><tr>
+          <th>${escapeHtml(p.prov)}</th><th>Ekspor</th><th>Impor</th><th>Validasi kontrol</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>Jumlah baris</td><td>${p.ekspor}</td><td>${p.impor}</td>
+            <td>${(p.validasi || []).map((v) => `${escapeHtml(v.arus)}/${escapeHtml(v.basis)}: ${v.dicocokkan ? 'cocok' : 'TIDAK COCOK'}`).join('<br>') || '-'}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    ${(p.warnings || []).length ? `<div class="alert alert-warn">${p.warnings.map(escapeHtml).join('<br>')}</div>` : ''}
+  `).join('')}
+  <form method="post" action="/perdagangan/admin/save">
+    <input type="hidden" name="stage" value="${escapeHtml(stage)}">
+    <button class="btn btn-primary" type="submit">Simpan ke Database</button>
+    <a class="btn btn-ghost" href="/perdagangan?tab=admin">Batal</a>
+  </form>
+</section>`;
+
+  const riwayat = `<section class="dashboard-card">
+  <h2>Riwayat Unggahan</h2>
+  ${(log || []).length ? `<div class="table-scroll"><table class="data-table">
+    <thead><tr><th>Periode</th><th>Arus</th><th>Provinsi</th><th>Basis</th>
+      <th>Baris</th><th>Kontrol</th><th>Waktu</th></tr></thead>
+    <tbody>${log.map((r) => `<tr>
+      <td>${escapeHtml(String(r.bulan))}/${escapeHtml(String(r.tahun))}</td>
+      <td>${escapeHtml(r.arus)}</td><td>${escapeHtml(r.prov)}</td><td>${escapeHtml(r.basis)}</td>
+      <td>${escapeHtml(String(r.baris))}</td>
+      <td>${r.dicocokkan ? 'cocok' : 'tidak cocok'}</td>
+      <td>${escapeHtml(String(r.loaded_at || '').slice(0, 19).replace('T', ' '))}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>` : '<div class="alert alert-info">Belum ada unggahan.</div>'}
+</section>`;
+
+  const periodeCard = `<section class="dashboard-card">
+  <h2>Data Tersimpan per Periode</h2>
+  ${(periode || []).length ? `<div class="table-scroll"><table class="data-table">
+    <thead><tr><th>Periode</th><th>Baris ekspor</th><th>Baris impor</th></tr></thead>
+    <tbody>${periode.map((r) => `<tr><td>${escapeHtml(MONTH_NAMES[r.bulan - 1] || '')} ${escapeHtml(String(r.tahun))}</td>
+      <td>${r.ekspor}</td><td>${r.impor}</td></tr>`).join('')}</tbody>
+  </table></div>` : '<div class="alert alert-info">Belum ada data perdagangan.</div>'}
+</section>`;
+
+  return `${pesan}${unggah}${pratinjau}${periodeCard}${riwayat}`;
+}
+
 export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, tahun, bulan,
-  ringkasan, seri, hs2, negara, pelabuhan, periods }) {
+  ringkasan, seri, hs2, negara, pelabuhan, periods, admin = null }) {
   const f2 = (v) => formatIdNumber(v ?? 0, 2);
   const bulanName = MONTH_NAMES[bulan - 1] || '';
   const params = `provinsi=${encodeURIComponent(province)}&tahun=${tahun}&bulan=${bulan}`;
   const tabs = [
     { label: 'Ringkasan', href: `/perdagangan?tab=ringkasan&${params}`, active: tab === 'ringkasan' },
     { label: 'Rincian', href: `/perdagangan?tab=rincian&${params}`, active: tab === 'rincian' },
+    ...(user.role === 'admin'
+      ? [{ label: 'Admin & Unggah', href: '/perdagangan?tab=admin', active: tab === 'admin' }]
+      : []),
   ];
   const header = `<div class="section-hero">
   <div>
@@ -729,6 +803,14 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
   </select></label>
   <noscript><button class="btn btn-primary" type="submit">Tampilkan</button></noscript>
 </form>`;
+
+  if (tab === 'admin') {
+    return layout({
+      title: 'Perdagangan - Admin', user, section: 'perdagangan',
+      crumbs: moduleCrumbs('Perdagangan', '/perdagangan', 'admin'),
+      body: `${header}${perdaganganAdmin(admin || {})}`,
+    });
+  }
 
   if (!ringkasan) {
     return layout({
@@ -783,6 +865,20 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
 </section>`;
   };
 
+  // Unduh BRS Exim (IDML) untuk periode yang sedang dilihat.
+  const unduh = `<section class="dashboard-card">
+  <h2>📥 Unduh BRS Ekspor-Impor</h2>
+  <p class="side-note">Dokumen .idml diisi dari data periode ini. Buka di InDesign,
+    lalu simpan sebagai .indd atau PDF. Paket menyertakan PERINGATAN.txt berisi
+    catatan ekspor.</p>
+  <form method="get" action="/export/perdagangan/idml">
+    <input type="hidden" name="provinsi" value="${escapeHtml(province)}">
+    <input type="hidden" name="tahun" value="${tahun}">
+    <input type="hidden" name="bulan" value="${escapeHtml(bulanName)}">
+    <button class="btn btn-primary" type="submit">Unduh .idml</button>
+  </form>
+</section>`;
+
   const isi = tab === 'rincian'
     ? tabelPeran('Golongan Barang Ekspor (HS 2 digit)', hs2?.ekspor, 'Nilai FOB')
       + tabelPeran('Golongan Barang Impor (HS 2 digit)', hs2?.impor, 'Nilai CIF')
@@ -790,7 +886,7 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
       + tabelPeran('Negara Asal Utama', negara?.impor, 'Nilai CIF')
       + tabelPeran('Pelabuhan Muat Utama', pelabuhan?.ekspor, 'Nilai FOB')
       + tabelPeran('Pelabuhan Bongkar Utama', pelabuhan?.impor, 'Nilai CIF')
-    : metrik + grafik;
+    : metrik + grafik + unduh;
 
   const body = `${header}${kontrol}${isi}`;
   // chartScript expects {id, type, labels, datasets}.

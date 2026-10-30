@@ -29,8 +29,11 @@ import Busboy from 'busboy';
 import { EXPORT_MIME, checkExporter, exportFileName, runExport } from './export.js';
 import {
   PERDAGANGAN_PROVINSI, perdaganganHs2, perdaganganNegara, perdaganganPelabuhan,
-  perdaganganPeriods, perdaganganRingkasan, perdaganganSeri,
+  perdaganganPeriods, perdaganganRingkasan, perdaganganSeri, perdaganganEtlLog,
+  perdaganganRingkasPeriode,
 } from './perdagangan.js';
+import { parsePerdaganganZip, savePerdagangan } from './etl-perdagangan.js';
+import { readZip } from './zip-reader.js';
 import { deleteStaged, getStaged, pruneStaged, putStaged, stagingStore } from './upload-store.js';
 import { cellKey, deleteNote, getNote, normaliseCell, noteKeysFor, saveNote } from './growth-notes.js';
 import { collectNotes, getCached, hashNotes, monthName, notePeriods, saveSummary } from './growth-summary.js';
@@ -890,7 +893,28 @@ const requestHandler = async (req, res) => {
 
 /** Halaman modul Perdagangan Luar Negeri. */
 async function buildPerdagangan(session, url) {
-  const tab = url.searchParams.get('tab') === 'rincian' ? 'rincian' : 'ringkasan';
+  const wantTab = url.searchParams.get('tab');
+  const allowed = ['ringkasan', 'rincian'];
+  if (wantTab === 'admin' && session.role === 'admin') allowed.push('admin');
+  const tab = allowed.includes(wantTab) ? wantTab : 'ringkasan';
+
+  if (tab === 'admin') {
+    const stage = url.searchParams.get('stage');
+    const record = stage && (await getStaged(stage));
+    const ringkas = record && record.kind === 'perdagangan' ? record.ringkas : null;
+    const stageAktif = ringkas ? stage : null;
+    const [log, periode, periodsAdmin] = await Promise.all([
+      perdaganganEtlLog(20), perdaganganRingkasPeriode(), perdaganganPeriods(),
+    ]);
+    return perdaganganPage({
+      user: session, tab: 'admin', provinsi: PERDAGANGAN_PROVINSI, province: PERDAGANGAN_PROVINSI[0],
+      tahun: (periodsAdmin.at(-1) || {}).tahun || new Date().getFullYear(),
+      bulan: (periodsAdmin.at(-1) || {}).bulan || 1,
+      periods: periodsAdmin, ringkasan: null,
+      admin: { stage: stageAktif, ringkas, log, periode, flash: readFlash(url) },
+    });
+  }
+
   const periods = await perdaganganPeriods();
   const latest = periods.at(-1) || { tahun: new Date().getFullYear(), bulan: 1 };
 
@@ -915,6 +939,54 @@ async function buildPerdagangan(session, url) {
     tahun, bulan, ringkasan, seri, hs2, negara, pelabuhan, periods,
   });
 }
+
+    // ---- admin modul Perdagangan: unggah ZIP DBF bulanan ----
+    if (url.pathname === '/perdagangan/admin/upload' && req.method === 'POST') {
+      if (session.role !== 'admin') return sendHtml(res, errorPage('Akses admin diperlukan.'), 403);
+      await pruneUploads();
+      const back = '/perdagangan?tab=admin';
+      try {
+        const { files } = await parseMultipart(req);
+        const zipFile = files.find((f) => /\.zip$/i.test(f.name || ''));
+        if (!zipFile) return redirect(res, flash(back, 'Unggah berkas ZIP berisi DBF perdagangan.', false));
+        const entries = readZip(zipFile.buffer);
+        const parsed = parsePerdaganganZip(entries);
+        const ringkas = parsed.map((p) => ({
+          prov: p.prov, kode: p.kode,
+          ekspor: p.ekspor.length, impor: p.impor.length,
+          validasi: p.log, warnings: p.warnings,
+        }));
+        const token = stageKey();
+        await putStaged(token, { at: Date.now(), kind: 'perdagangan', sumber: zipFile.name, parsed, ringkas });
+        const totalBaris = parsed.reduce((a, p) => a + p.ekspor.length + p.impor.length, 0);
+        if (!totalBaris) {
+          return redirect(res, flash(back, 'ZIP tidak memuat baris data yang bisa dibaca.', false));
+        }
+        return redirect(res, `/perdagangan?tab=admin&stage=${token}`);
+      } catch (err) {
+        return redirect(res, flash(back, `Gagal membaca ZIP: ${err.message}`, false));
+      }
+    }
+
+    if (url.pathname === '/perdagangan/admin/save' && req.method === 'POST') {
+      if (session.role !== 'admin') return sendHtml(res, errorPage('Akses admin diperlukan.'), 403);
+      const form = new URLSearchParams(await readBody(req));
+      const back = '/perdagangan?tab=admin';
+      const token = form.get('stage');
+      const record = await getStaged(token);
+      if (!record || record.kind !== 'perdagangan') {
+        return redirect(res, flash(back, 'Sesi unggahan kedaluwarsa. Unggah ulang berkas.', false));
+      }
+      try {
+        const hasil = await savePerdagangan(record.parsed, record.sumber);
+        await deleteStaged(token);
+        const pesan = `${hasil.ekspor} baris ekspor dan ${hasil.impor} baris impor tersimpan `
+          + `untuk periode ${hasil.periode.join(', ')}.`;
+        return redirect(res, flash(back, pesan, true));
+      } catch (err) {
+        return redirect(res, flash(back, `Gagal menyimpan: ${err.message}`, false));
+      }
+    }
 
     if (url.pathname === '/perdagangan') return sendHtml(res, await buildPerdagangan(session, url));
     if (url.pathname === '/transportasi') return sendHtml(res, await buildTransportasi(session, url));
@@ -1405,6 +1477,25 @@ async function buildPerdagangan(session, url) {
       const payload = { prov, thn: tahun, bln: bulan };
       const data = await runExport('xlsx-pariwisata', payload);
       return sendFile(res, data, EXPORT_MIME.xlsx, exportFileName('xlsx-pariwisata', payload));
+    }
+
+    if (url.pathname === '/export/perdagangan/idml') {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
+      const form = req.method === 'POST' ? await parseMultipart(req) : { files: [], fields: {} };
+      const values = { ...Object.fromEntries(url.searchParams), ...form.fields };
+      const prov = values.provinsi || 'Papua Selatan';
+      const tahun = Number(values.tahun);
+      const bulan = values.bulan || '';
+      if (!MONTH_NAMES.includes(bulan) || !Number.isInteger(tahun)) {
+        return sendHtml(res, errorPage('Provinsi, tahun, atau bulan tidak valid.'), 400);
+      }
+      try {
+        const payload = { prov, thn: tahun, bln: bulan };
+        const data = await runExport('idml-exim', payload);
+        return sendFile(res, data, EXPORT_MIME['idml-exim'], exportFileName('idml-exim', payload));
+      } catch (err) {
+        return sendHtml(res, errorPage(`Ekspor gagal (idml-exim): ${err.message}`), 500);
+      }
     }
 
     if (url.pathname === '/export/pariwisata/idml') {
