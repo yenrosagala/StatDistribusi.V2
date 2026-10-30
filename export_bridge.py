@@ -612,53 +612,74 @@ NEGARA_LABEL = {
 }
 
 
+def _label_hs2(engine):
+    """{kode 2 digit: label} dari tabel dimensi; kosong bila tabelnya tidak ada."""
+    try:
+        import pandas as pd
+        df = pd.read_sql_query("select kode, label from dim_perdagangan_hs2", engine)
+        return {str(r["kode"]).zfill(2): str(r["label"]) for _, r in df.iterrows()}
+    except Exception:  # noqa: BLE001 - dimensi opsional, cukup pakai kode
+        return {}
+
+
 def build_xlsx_perdagangan(payload):
     """Tabel-tabel BRS Ekspor-Impor sebagai Excel, satu sheet per tabel.
 
-    Isinya sama dengan yang dicetak ke .idml: entitas di luar daftar tetap
-    template tetap muncul di sini (tidak dilebur), supaya tabel ini bisa dipakai
-    memeriksa angka. Kolom pembanding yang datanya tidak ada diisi "-".
+    Sheet negara juga memuat grafik batang perbandingan kumulatif tahun lalu vs
+    tahun berjalan -- sama dengan grafik di halaman web -- lengkap dengan label
+    nilai berformat Indonesia (titik ribuan, koma desimal, dua digit).
     """
     import pandas as pd
 
     from modules.database import get_engine
     from modules.etl_engine import MONTH_NAMES
     from modules.perdagangan_data import kumpulkan_perdagangan
+    from modules.perdagangan_grafik import grafik_batang
 
     prov, thn = payload["prov"], int(payload["thn"])
     bln_raw = payload["bln"]
     bln = int(bln_raw) if str(bln_raw).isdigit() else MONTH_NAMES.index(bln_raw) + 1
-    data = kumpulkan_perdagangan(get_engine(), prov, thn, bln)
+    engine = get_engine()
+    data = kumpulkan_perdagangan(engine, prov, thn, bln)
     if not (data.get("ringkasan_ekspor") or data.get("ringkasan_impor")):
         raise SystemExit(f"Tidak ada data perdagangan untuk {prov} {bln} {thn}.")
 
     ket = (data.get("meta") or {}).get("ketersediaan") or {}
+    label_hs = _label_hs2(engine)
 
     def kolom(arus):
         k = ket.get(arus) or {}
         return (k.get("last", True), k.get("prev", True), k.get("kum_last", True))
 
     prev_bln, prev_thn = (bln - 1, thn) if bln > 1 else (12, thn - 1)
+    singkat = MONTH_NAMES[bln - 1][:3]
     kepala = [
         "Uraian",
         f"{MONTH_NAMES[bln - 1]} {thn - 1}",
         f"{MONTH_NAMES[prev_bln - 1]} {thn}",
         f"{MONTH_NAMES[bln - 1]} {thn}",
-        f"Jan-{MONTH_NAMES[bln - 1][:3]} {thn - 1}",
-        f"Jan-{MONTH_NAMES[bln - 1][:3]} {thn}",
+        f"Jan-{singkat} {thn - 1}",
+        f"Jan-{singkat} {thn}",
         "% Peran",
     ]
 
     def angka(v):
         return None if v is None else round(float(v), 2)
 
-    def baris_entitas(arus, daftar, total_kum):
+    def label_negara(kode):
+        return NEGARA_LABEL.get(str(kode).upper(), str(kode))
+
+    def label_golongan(kode):
+        k = str(kode).zfill(2)
+        return label_hs.get(k, f"HS{k}")
+
+    def baris_entitas(arus, daftar, total_kum, label):
         ada_last, ada_prev, ada_kum_last = kolom(arus)
         out = []
         for r in daftar or []:
             kum = float(r.get("kum") or 0.0)
             out.append([
-                str(r.get("kode", "")),
+                label(r.get("kode")),
                 angka(r.get("last")) if ada_last else "-",
                 angka(r.get("prev")) if ada_prev else "-",
                 angka(r.get("nilai")),
@@ -673,13 +694,27 @@ def build_xlsx_perdagangan(payload):
                 for r in data.get(f"ringkasan_{arus}") or []}
         return float((ring.get("total") or {}).get("kum_now") or 0.0)
 
+    def grafik_negara(arus, judul):
+        """Grafik batang 10 negara teratas: kumulatif tahun lalu vs tahun ini."""
+        daftar = sorted(data.get(f"{arus}_negara") or [],
+                        key=lambda r: float(r.get("kum") or 0.0), reverse=True)[:10]
+        if not daftar:
+            return None
+        labels = [label_negara(r.get("kode")) for r in daftar]
+        seri = [
+            (f"Kumulatif {thn - 1}", [float(r.get("kum_last") or 0.0) for r in daftar]),
+            (f"Kumulatif {thn}", [float(r.get("kum") or 0.0) for r in daftar]),
+        ]
+        return grafik_batang(judul, labels, seri)
+
     sheets = {}
 
     for arus, judul in (("ekspor", "Ekspor"), ("impor", "Impor")):
         ada_last, ada_prev, ada_kum_last = kolom(arus)
         ring = data.get(f"ringkasan_{arus}") or []
         if ring:
-            isi = [[("Total " + judul) if str(r.get("label", "")).lower() == "total" else r.get("label", ""),
+            isi = [[("Total " + judul) if str(r.get("label", "")).lower() == "total"
+                    else r.get("label", ""),
                     angka(r.get("last")) if ada_last else "-",
                     angka(r.get("prev")) if ada_prev else "-",
                     angka(r.get("now")),
@@ -687,13 +722,27 @@ def build_xlsx_perdagangan(payload):
                     angka(r.get("kum_now")),
                     round(float(r["kum_now"]) / total_kum(arus) * 100.0, 2)
                     if total_kum(arus) else 0.0] for r in ring]
-            sheets[f"Ringkasan {judul}"] = isi
-        for kunci, label in (("hs2", "HS 2 Digit"), ("negara", "Negara"),
-                             ("pelabuhan_resmi", "Pelabuhan Muat")):
+            sheets[f"Ringkasan {judul}"] = {"baris": isi, "png": None}
+
+        for kunci, label, pelabel in (
+                ("hs2", "HS 2 Digit", label_golongan),
+                ("negara", "Negara", label_negara),
+                ("pelabuhan_resmi", "Pelabuhan Muat", lambda k: str(k))):
             daftar = data.get(f"{arus}_{kunci}")
-            if daftar:
-                sheets[f"{judul} {label}"[:31]] = baris_entitas(
-                    arus, daftar, total_kum(arus))
+            if not daftar:
+                continue
+            nama = f"{judul} {label}"[:31]
+            png = None
+            if kunci == "negara":
+                arah = "Tujuan" if arus == "ekspor" else "Asal"
+                png = grafik_negara(
+                    arus,
+                    f"Perbandingan Nilai Kumulatif {judul} Menurut Negara {arah} "
+                    f"(Ribu US$), {thn - 1} dan {thn}")
+            sheets[nama] = {
+                "baris": baris_entitas(arus, daftar, total_kum(arus), pelabel),
+                "png": png,
+            }
 
     e = (data.get("ringkasan_ekspor") or [{}])[0]
     i = (data.get("ringkasan_impor") or [{}])[0]
@@ -716,17 +765,19 @@ def build_xlsx_perdagangan(payload):
             angka(ambil("kum_now")),
             "selisih",
         ])
-    sheets["Neraca"] = neraca
+    sheets["Neraca"] = {"baris": neraca, "png": None}
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         for nama, isi in sheets.items():
-            pd.DataFrame(isi, columns=kepala).to_excel(writer, sheet_name=nama[:31], index=False)
+            judul_sheet = nama[:31]
+            pd.DataFrame(isi["baris"], columns=kepala).to_excel(
+                writer, sheet_name=judul_sheet, index=False)
+            if isi.get("png"):
+                _tempel_grafik(writer.sheets[judul_sheet], isi["png"],
+                               top_row=len(isi["baris"]) + 3, width=900, height=380)
     output.seek(0)
     return output.getvalue()
-
-
-
 def build_idml_exim(payload):
     """Isi template BRS Ekspor-Impor dengan data dari Supabase."""
     from modules.database import get_engine
