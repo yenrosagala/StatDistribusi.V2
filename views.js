@@ -185,7 +185,6 @@ ${(exportStatus.ok && !exportStatus.warning) || user.role === 'rekon' ? '' : `<d
   dependensinya terpasang (<code>pip install -r requirements.txt</code>) agar tombol unduh
   PPTX/DOCX/IDML/XLSX berfungsi.
 </div>`}
-${user && user.role === 'admin' ? '<div id="generate-semua-slot" class="toolbar"></div>' : ''}
 ${body}
     ${growthDialog()}
     <div class="app-footer">Pariwisata &amp; Transportasi Papua · BPS Provinsi Papua</div>
@@ -1264,6 +1263,7 @@ function heroActions(tabs, moduleId, user) {
   const onAdmin = tabs.some((t) => t.active && String(t.href).includes('tab=admin'));
   return `<div class="hero-actions">
     <a class="btn${onAdmin ? ' btn-primary' : ''}" href="/${moduleId}?tab=admin">🔐 Admin ETL</a>
+    <span id="generate-semua-slot" class="hero-aksi-tambahan"></span>
   </div>`;
 }
 
