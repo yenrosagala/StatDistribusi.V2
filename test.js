@@ -852,3 +852,24 @@ test('bacaKolomBulan mengenali dua format label bulan Excel Wisnus', async () =>
   assert.equal(labelKabkota('9471', 'JAYAPURA'), 'Kota Jayapura');
   assert.equal(labelKabkota('9403', 'JAYAPURA'), 'Kabupaten Jayapura');
 });
+test('skrip inline di halaman perdagangan bebas galat sintaks', () => {
+  const nilai = [null, null, 100, null, 250];
+  const laporan = {
+    ekspor: { ringkasan: [{ label: 'Total', nilai }], hs2: [], negara: [], pelabuhan: [] },
+    impor: { ringkasan: [{ label: 'Total', nilai }], hs2: [], negara: [], pelabuhan: [] },
+    neraca: { ringkasan: [{ label: 'Total', nilai }], rekap: [] },
+  };
+  const html = perdaganganPage({
+    user: { name: 'Admin', role: 'admin' }, tab: 'laporan',
+    provinsi: ['Papua'], province: 'Papua', tahun: 2026, bulan: 8,
+    periods: [{ tahun: 2026, bulan: 8 }], ringkasan: null, laporan,
+  });
+  // Escape \n yang salah di dalam template literal menghasilkan newline nyata di
+  // dalam string JS dan membuat seluruh skrip halaman gagal di-parse browser.
+  const skrip = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  assert.ok(skrip.length > 0, 'ada skrip inline');
+  skrip.forEach((isi, i) => {
+    assert.doesNotThrow(() => new Function(isi), `skrip #${i + 1} harus valid`);
+  });
+  assert.ok(html.includes('generate-semua-slot'), 'slot tombol generate semua ada untuk admin');
+});

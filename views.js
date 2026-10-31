@@ -1822,8 +1822,7 @@ function narrativeScript() {
         function lanjut() {
           if (i >= forms.length) {
             if (gagal.length) {
-              window.alert('Selesai dengan ' + gagal.length + ' kegagalan:\n- '
-                + gagal.slice(0, 5).join('\n- '));
+              window.alert('Selesai dengan ' + gagal.length + ' kegagalan: ' + gagal.slice(0, 5).join(' | '));
             }
             window.location.reload();
             return;
