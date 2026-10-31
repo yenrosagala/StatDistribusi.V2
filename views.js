@@ -185,6 +185,7 @@ ${(exportStatus.ok && !exportStatus.warning) || user.role === 'rekon' ? '' : `<d
   dependensinya terpasang (<code>pip install -r requirements.txt</code>) agar tombol unduh
   PPTX/DOCX/IDML/XLSX berfungsi.
 </div>`}
+${user && user.role === 'admin' ? '<div id="generate-semua-slot" class="toolbar"></div>' : ''}
 ${body}
     ${growthDialog()}
     <div class="app-footer">Pariwisata &amp; Transportasi Papua · BPS Provinsi Papua</div>
@@ -1792,6 +1793,66 @@ function narrativeScript() {
       tampilkanProses('Menyusun narasi AI...');
     }
   }, true);
+
+  function ubahTeksProses(teks) {
+    var t = document.querySelector('#proses-ai .proses-teks');
+    if (t) t.innerHTML = teks;
+  }
+
+  // Tombol "Generate Semua Narasi" untuk admin. Target diambil dari holder yang
+  // ada di halaman ini, jadi otomatis mencakup pariwisata (indikator + Wisnus),
+  // transportasi, dan perdagangan tanpa daftar terpisah di server.
+  var slot = document.getElementById('generate-semua-slot');
+  if (slot) {
+    var forms = document.querySelectorAll(
+      'form[action^="/api/narrative/"], form[action="/api/wisnus/narrative"], '
+      + 'form[action="/perdagangan/narasi/generate"]'
+    );
+    if (forms.length) {
+      var tombol = document.createElement('button');
+      tombol.type = 'button';
+      tombol.className = 'btn btn-primary';
+      tombol.innerHTML = '\u{1F916} Generate Semua Narasi (' + forms.length + ')';
+      slot.appendChild(tombol);
+      tombol.addEventListener('click', function () {
+        var gagal = [];
+        var i = 0;
+        tombol.disabled = true;
+        tampilkanProses('Menyiapkan narasi AI...');
+        function lanjut() {
+          if (i >= forms.length) {
+            if (gagal.length) {
+              window.alert('Selesai dengan ' + gagal.length + ' kegagalan:\n- '
+                + gagal.slice(0, 5).join('\n- '));
+            }
+            window.location.reload();
+            return;
+          }
+          var f = forms[i];
+          ubahTeksProses('Membuat narasi ' + (i + 1) + ' dari ' + forms.length + '...');
+          i += 1;
+          fetch(f.getAttribute('action'), {
+            method: 'POST',
+            headers: { 'Accept': 'application/json' },
+            body: new URLSearchParams(new FormData(f)),
+            credentials: 'same-origin',
+          })
+            .then(function (res) {
+              return res.text().then(function (teks) {
+                var data = null;
+                try { data = JSON.parse(teks); } catch (e) { data = null; }
+                // Endpoint redirect menjawab HTML: anggap berhasil bila status ok.
+                if (data && data.error) gagal.push(data.error);
+                else if (!data && !res.ok) gagal.push('HTTP ' + res.status);
+              });
+            })
+            .catch(function (err) { gagal.push(err.message); })
+            .then(lanjut);
+        }
+        lanjut();
+      });
+    }
+  }
 })();
 </script>`;
 }

@@ -738,12 +738,17 @@ test('port codes are rendered with names from the master file', () => {
     tahun: 2026, bulan: 8, periods: [{ tahun: 2026, bulan: 8 }], ringkasan: null, laporan };
 
   const admin = perdaganganPage({ ...dasar, user: { name: 'Admin', role: 'admin' } });
-  assert.equal((admin.match(/action="\/perdagangan\/narasi\/generate"/g) || []).length, 8,
+  // Hitung elemen <form> sungguhan: skrip "Generate Semua Narasi" juga memuat
+  // selector dengan path yang sama, sehingga hitungan string mentah meleset.
+  assert.equal((admin.match(/<form[^>]*action="\/perdagangan\/narasi\/generate"/g) || []).length, 8,
     'delapan form generate untuk delapan tabel');
   assert.ok(admin.includes('Buat Narasi AI'), 'tombol buat ada');
 
   const rekon = perdaganganPage({ ...dasar, user: { name: 'Rekon', role: 'rekon' } });
-  assert.ok(!rekon.includes('/perdagangan/narasi/generate'), 'non-admin tanpa tombol');
+  // Non-admin: tidak ada form generate maupun slot tombol generate-semua.
+  assert.equal((rekon.match(/<form[^>]*action="\/perdagangan\/narasi\/generate"/g) || []).length, 0,
+    'non-admin tanpa form generate');
+  assert.ok(!rekon.includes('id="generate-semua-slot"'), 'non-admin tanpa tombol generate semua');
 
   const berisi = perdaganganPage({ ...dasar, user: { name: 'Admin', role: 'admin' },
     narasi: { 'impor-negara': { teks: 'Nilai impor naik.\n\nParagraf kedua.', sumber: 'Gemini' } } });
