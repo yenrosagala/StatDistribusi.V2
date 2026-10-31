@@ -431,12 +431,21 @@ export async function perdaganganLaporan(prov, tahun, bulan) {
   impor.negara = beriLabel(impor.negara, 'negara', hs2Labels);
   impor.pelabuhan = beriLabel(impor.pelabuhan, 'pelabuhan', hs2Labels);
 
+  // Tabel 10 memuat tiga arus (Ekspor, Impor, Neraca = ekspor - impor), bukan
+  // rincian migas/nonmigas dari selisih. Nilai tiap baris berurutan:
+  // [bulan yang sama tahun lalu, bulan lalu, bulan ini, YTD tahun lalu, YTD tahun ini].
+  const totalEkspor = ekspor.ringkasan[0] || { nilai: [] };
+  const totalImpor = impor.ringkasan[0] || { nilai: [] };
+  const selisih = (a, b) => (a == null || b == null ? null : a - b);
   const neraca = {
-    ringkasan: ekspor.ringkasan.map((r, i) => ({
-      label: i === 0 ? 'Total' : r.label,
-      nilai: r.nilai.map((v, j) => (v == null || impor.ringkasan[i].nilai[j] == null
-        ? null : v - impor.ringkasan[i].nilai[j])),
-    })),
+    ringkasan: [
+      { label: 'Ekspor', nilai: [...totalEkspor.nilai] },
+      { label: 'Impor', nilai: [...totalImpor.nilai] },
+      {
+        label: 'Neraca Perdagangan',
+        nilai: totalEkspor.nilai.map((v, i) => selisih(v, totalImpor.nilai[i])),
+      },
+    ],
     rekap: rekapNeraca(eksporResmi, imporResmi, tahun, bulan),
   };
 

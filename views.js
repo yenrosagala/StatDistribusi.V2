@@ -961,20 +961,22 @@ function perdaganganLaporanView({ tahun, bulan, laporan, narasi = {}, province =
   <span class="metric-value${v != null && v < 0 ? ' neg' : ''}">${f(v)}</span>
   <span class="side-note">${escapeHtml(sub)}</span></div>`;
   const statusNeraca = (v) => (v == null ? '&ndash;' : (v >= 0 ? 'Surplus' : 'Defisit'));
-  const barisNeraca = n.map((r) => `<tr${/^Total/i.test(r.label) ? ' class="total-row"' : ''}>
+  const delta = (a, b) => (a == null || b == null ? '&ndash;' : formatIdNumber(a - b, 2));
+  const barisNeraca = n.map((r) => `<tr${/^Neraca/i.test(r.label) ? ' class="total-row"' : ''}>
   <td>${escapeHtml(r.label)}</td>
   <td>${f(r.nilai[0])}</td><td>${f(r.nilai[1])}</td><td>${f(r.nilai[2])}</td>
   <td>${f(r.nilai[3])}</td><td>${f(r.nilai[4])}</td>
-  <td>${statusNeraca(r.nilai[2])}</td><td>${statusNeraca(r.nilai[4])}</td>
-  <td>${r.nilai[2] == null || r.nilai[1] == null ? '&ndash;' : formatIdNumber(r.nilai[2] - r.nilai[1], 2)}</td>
-  <td>${r.nilai[4] == null || r.nilai[3] == null ? '&ndash;' : formatIdNumber(r.nilai[4] - r.nilai[3], 2)}</td></tr>`).join('');
+  <td>${delta(r.nilai[2], r.nilai[1])}</td>
+  <td>${delta(r.nilai[4], r.nilai[3])}</td></tr>`).join('');
 
+  // Baris Neraca = n[2]; KPI memakai baris itu, bukan baris pertama.
+  const neracaRow = n.find((r) => /^Neraca/i.test(r.label)) || n[n.length - 1] || { nilai: [] };
   const kartuNeraca = `<section class="dashboard-card laporan-kartu">
   <div class="section-header"><h2>Neraca Perdagangan</h2></div>
   <div class="metric-grid">
-    ${kpi(`Neraca ${bulanNama} ${tahun}`, n[0].nilai[2], statusNeraca(n[0].nilai[2]))}
-    ${kpi(`Neraca Jan–${bulanNama} ${tahun}`, n[0].nilai[4], statusNeraca(n[0].nilai[4]))}
-    ${kpi(`Neraca ${bulanNama} ${tahun - 1}`, n[0].nilai[0], statusNeraca(n[0].nilai[0]))}
+    ${kpi(`Neraca ${bulanNama} ${tahun}`, neracaRow.nilai[2], statusNeraca(neracaRow.nilai[2]))}
+    ${kpi(`Neraca Jan–${bulanNama} ${tahun}`, neracaRow.nilai[4], statusNeraca(neracaRow.nilai[4]))}
+    ${kpi(`Neraca ${bulanNama} ${tahun - 1}`, neracaRow.nilai[0], statusNeraca(neracaRow.nilai[0]))}
   </div>
   <div class="laporan-blok">
     <h3>10. Ringkasan Perkembangan Neraca Perdagangan</h3>
@@ -985,7 +987,8 @@ function perdaganganLaporanView({ tahun, bulan, laporan, narasi = {}, province =
         <th>${escapeHtml(bulanNama)} ${tahun}</th>
         <th>Jan&ndash;${escapeHtml(bulanNama)} ${tahun - 1}</th>
         <th>Jan&ndash;${escapeHtml(bulanNama)} ${tahun}</th>
-        <th>Status bulan</th><th>Status kumulatif</th><th>Selisih bulanan</th><th>Selisih kumulatif</th>
+        <th>Perubahan ${escapeHtml(bulanNama)} ${tahun} thd ${escapeHtml(MONTH_NAMES[prev.bulan - 1])} ${prev.tahun}</th>
+        <th>Perubahan Jan&ndash;${escapeHtml(bulanNama)} ${tahun} thd ${tahun - 1}</th>
       </tr></thead>
       <tbody>${barisNeraca}</tbody>
     </table></div>
