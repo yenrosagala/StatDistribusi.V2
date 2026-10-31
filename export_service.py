@@ -25,6 +25,7 @@ import gen_summary  # noqa: E402
 import summary_pdf  # noqa: E402
 import gen_narrative  # noqa: E402
 import tempfile  # noqa: E402
+import threading  # noqa: E402
 
 MIME = {
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -70,6 +71,12 @@ def _log(msg):
         print(msg, file=sys.stderr, flush=True)
     except Exception:
         pass
+
+
+# Ekspor dokumen memakai matplotlib dan os.chdir() yang tidak aman dijalankan
+# bersamaan; ThreadingHTTPServer bisa memanggil dua permintaan sekaligus, dan itu
+# pernah menghasilkan Excel bernilai 0 semua. Serialkan seluruh ekspor dokumen.
+EKSPOR_LOCK = threading.Lock()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -166,6 +173,11 @@ class Handler(BaseHTTPRequestHandler):
         builder = export_bridge.BUILDERS.get(kind)
         if not builder:
             return self._send_json(400, {"error": "Jenis ekspor tidak dikenal: %s" % kind})
+        # Satu ekspor pada satu waktu: matplotlib dan os.chdir tidak thread-safe.
+        with EKSPOR_LOCK:
+            return self._jalankan_ekspor(kind, builder, payload)
+
+    def _jalankan_ekspor(self, kind, builder, payload):
 
         try:
             data = builder(payload)

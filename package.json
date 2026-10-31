@@ -12,7 +12,8 @@
     "export-check": "node scripts/export-supervisor.mjs --once",
     "templates": "node scripts/install-templates.mjs",
     "db:export": "node scripts/dump-json.mjs",
-    "db:import": "node scripts/import-json.mjs"
+    "db:import": "node scripts/import-json.mjs",
+    "audit:surfaces": "node scripts/audit-surfaces.mjs"
   },
   "engines": {
     "node": ">=22"
