@@ -1732,40 +1732,65 @@ function summaryScript() {
 function narrativeScript() {
   return `<script>
 (function () {
-  // The narrative buttons are forms posting to /api/narrative/generate|regenerate,
-  // which answer with JSON. Left alone, the browser navigates to the API and shows
-  // the raw JSON body. Intercept the submit, POST in the background, then reload so
-  // the generated narrative appears in place.
+  // Lapisan proses: tampil selama narasi AI dibuat. Dipakai dua jalur:
+  // endpoint JSON (/api/narrative/*) dan endpoint redirect (Wisnus/Perdagangan).
+  function tampilkanProses(pesan) {
+    if (document.getElementById('proses-ai')) return;
+    var ov = document.createElement('div');
+    ov.id = 'proses-ai';
+    ov.className = 'proses-overlay';
+    ov.innerHTML = '<div class="proses-kotak"><div class="proses-spinner"></div>'
+      + '<div class="proses-teks">' + pesan + '<br><span class="proses-sub">'
+      + 'biasanya 5\u201320 detik</span></div></div>';
+    document.body.appendChild(ov);
+  }
+  function sembunyikanProses() {
+    var ov = document.getElementById('proses-ai');
+    if (ov) ov.parentNode.removeChild(ov);
+  }
   document.addEventListener('submit', function (ev) {
     var form = ev.target;
     if (!form || !form.getAttribute) return;
     var action = form.getAttribute('action') || '';
-    if (action.indexOf('/api/narrative/') !== 0) return;
-    ev.preventDefault();
     var btn = form.querySelector('button[type="submit"]');
     var original = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.innerHTML = 'Membuat narasi...'; }
-    fetch(action, {
-      method: 'POST',
-      headers: { 'Accept': 'application/json' },
-      body: new URLSearchParams(new FormData(form)),
-      credentials: 'same-origin',
-    })
-      .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (p) {
-          return { ok: res.ok, status: res.status, payload: p };
+
+    // 1. Endpoint JSON: kirim di latar, lalu muat ulang halaman.
+    if (action.indexOf('/api/narrative/') === 0) {
+      ev.preventDefault();
+      if (btn) { btn.disabled = true; btn.innerHTML = 'Membuat narasi...'; }
+      tampilkanProses('Menyusun narasi AI...');
+      fetch(action, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+        body: new URLSearchParams(new FormData(form)),
+        credentials: 'same-origin',
+      })
+        .then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (p) {
+            return { ok: res.ok, status: res.status, payload: p };
+          });
+        })
+        .then(function (r) {
+          if (!r.ok || (r.payload && r.payload.error)) {
+            throw new Error((r.payload && r.payload.error) || ('HTTP ' + r.status));
+          }
+          window.location.reload();
+        })
+        .catch(function (err) {
+          sembunyikanProses();
+          window.alert('Narasi gagal dibuat: ' + err.message);
+          if (btn) { btn.disabled = false; btn.innerHTML = original; }
         });
-      })
-      .then(function (r) {
-        if (!r.ok || (r.payload && r.payload.error)) {
-          throw new Error((r.payload && r.payload.error) || ('HTTP ' + r.status));
-        }
-        window.location.reload();
-      })
-      .catch(function (err) {
-        window.alert('Narasi gagal dibuat: ' + err.message);
-        if (btn) { btn.disabled = false; btn.innerHTML = original; }
-      });
+      return;
+    }
+
+    // 2. Endpoint yang menjawab dengan redirect: biarkan form terkirim apa adanya,
+    //    cukup tampilkan lapisan proses supaya pengguna tahu sedang diproses.
+    if (/narasi|narrative/i.test(action)) {
+      if (btn) { btn.disabled = true; btn.innerHTML = 'Membuat narasi...'; }
+      tampilkanProses('Menyusun narasi AI...');
+    }
   }, true);
 })();
 </script>`;
