@@ -124,10 +124,11 @@ export async function perdaganganNegara(prov, tahun, bulan) {
      WHERE prov=$1 AND basis=$2 AND tahun=$3 AND bulan=$4
      GROUP BY negara_iso2, negara_kode ORDER BY 3 DESC`,
     [prov, BASIS_IMPOR, tahun, bulan], 'negara impor');
-  const map = (rows) => rows.slice(0, 10).map((r) => ({
-    nama: r.negara_iso2 || r.negara_kode || '-',
-    nilai: num(r.nilai) / 1000,
-  }));
+  const map = (rows) => rows.slice(0, 10).map((r) => {
+    // Tampilkan nama negara, bukan kode ISO2 (dipakai tab Rincian).
+    const kode = String(r.negara_iso2 || r.negara_kode || '-').trim().toUpperCase();
+    return { kode, nama: NEGARA_NAMA[kode] || kode, nilai: num(r.nilai) / 1000 };
+  });
   return { ekspor: map(ekspor), impor: map(impor) };
 }
 
