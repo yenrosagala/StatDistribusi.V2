@@ -85,7 +85,7 @@ const ROLE_TABS = {
   rekon: ['report'],
 };
 const ROLE_TABS_PARIWISATA = {
-  admin: ['home', 'map', 'report', 'admin'],
+  admin: ['home', 'map', 'report'],
   user: ['home', 'map', 'report'],
   rekon: ['report'],
 };
@@ -96,8 +96,8 @@ const MODA = [
     title: 'Laut',
     table: 'transportasi_laut',
     satuan: 'ton',
-    colsP: ['dn_penumpang_naik', 'dn_penumpang_turun'],
-    colsB: ['dn_muat_barang_ton', 'dn_bongkar_barang_ton'],
+    colsP: ['penumpang_naik', 'penumpang_turun'],
+    colsB: ['muat_barang_ton', 'bongkar_barang_ton'],
     labelsP: ['PENUMPANG BERANGKAT', 'PENUMPANG DATANG'],
     labelsB: ['MUAT BARANG', 'BONGKAR BARANG'],
     colorsP: ['#047857', '#6EE7B7'],
@@ -130,10 +130,10 @@ const TRANSPORT_TARGETS = [
     table: 'transportasi_udara',
     rowCol: 'nama_bandara',
     cols: [
-      ['penumpang_datang', 'Penumpang Datang'],
-      ['penumpang_berangkat', 'Penumpang Berangkat'],
-      ['barang_bongkar_kg', 'Barang Bongkar (Ton)'],
-      ['barang_muat_kg', 'Barang Muat (Ton)'],
+      'penumpang_datang',
+      'penumpang_berangkat',
+      'barang_bongkar_kg',
+      'barang_muat_kg',
     ],
   },
   {
@@ -142,10 +142,10 @@ const TRANSPORT_TARGETS = [
     table: 'transportasi_laut',
     rowCol: 'nama_pelabuhan',
     cols: [
-      ['dn_penumpang_turun', 'Penumpang Turun'],
-      ['dn_penumpang_naik', 'Penumpang Naik'],
-      ['dn_bongkar_barang_ton', 'Barang Bongkar (Ton)'],
-      ['dn_muat_barang_ton', 'Barang Muat (Ton)'],
+      'dn_penumpang_turun',
+      'dn_penumpang_naik',
+      'dn_bongkar_barang_ton',
+      'dn_muat_barang_ton',
     ],
   },
 ];
