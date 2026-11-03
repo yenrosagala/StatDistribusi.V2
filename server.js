@@ -85,7 +85,7 @@ const ROLE_TABS = {
   rekon: ['report'],
 };
 const ROLE_TABS_PARIWISATA = {
-  admin: ['home', 'map', 'report'],
+  admin: ['home', 'map', 'report', 'admin'],
   user: ['home', 'map', 'report'],
   rekon: ['report'],
 };
