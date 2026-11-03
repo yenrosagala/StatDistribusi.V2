@@ -1590,6 +1590,21 @@ async function buildPerdagangan(session, url) {
       return json(res, await checkExporter());
     }
 
+    if (url.pathname === '/export/template/pptx' && req.method === 'POST') {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      let payload;
+      try { payload = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); }
+      catch { return json(res, { error: 'payload JSON tidak valid' }, 400); }
+      try {
+        const data = await runExport('pptx-template', payload);
+        return sendFile(res, data, EXPORT_MIME.pptx, 'dashboard_template.pptx');
+      } catch (err) {
+        return json(res, { error: err.message }, 500);
+      }
+    }
+
     if (url.pathname === '/export/transportasi/pptx') {
       if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
       const periods = sortPeriods(await availablePeriods());
