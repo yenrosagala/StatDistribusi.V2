@@ -423,7 +423,10 @@ textarea:focus-visible, summary:focus-visible, .landing-card:focus-visible {
     align-items: center; gap: 12px; padding: 14px 16px;
   }
   .side-nav { flex-direction: row; }
-  .landing-screen .landing-grid { grid-template-columns: 1fr; }
+  .landing-screen { min-height: auto; }
+  .landing-screen .landing-grid { grid-template-columns: 1fr; flex: 0 0 auto; align-items: start; }
+  .landing-screen .landing-card { height: auto; }
+  .landing-screen .landing-cta { margin-top: 6px; }
   .landing-h1 { font-size: 24px; }
   .crumbs { font-size: 12px; }
 }
