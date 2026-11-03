@@ -115,7 +115,29 @@ def run(payload):
                 ), {**params_w, "narrative": txt})
             return {"ok": True, "text": txt, "provider": src}
 
-        if kind == "transportasi":
+        if kind == "wisman":
+            if not all([prov, tahun, bulan]):
+                return {"error": "missing params"}
+            try:
+                from modules.wisman_prompt import build_prompt as build_wisman
+                prompt = build_wisman(eng, prov, tahun, bulan)
+            except ValueError as exc:
+                return {"error": str(exc)}
+            txt, src = generate_text(prompt, temperature=0.3, client=client)
+            if not txt:
+                return {"error": "ai failed"}
+            txt = normalize_narrative(txt)
+            params_w = {"province": str(prov).strip(), "year": tahun, "month": bulan}
+            with eng.begin() as c:
+                c.execute(text(
+                    "DELETE FROM pariwisata_ai_narratives WHERE province=:province AND year=:year "
+                    "AND month=:month AND jenis_akomodasi='wisman' AND indicator='wisman'"
+                ), params_w)
+                c.execute(text(
+                    "INSERT INTO pariwisata_ai_narratives (province,year,month,jenis_akomodasi,indicator,narrative) "
+                    "VALUES (:province,:year,:month,'wisman','wisman',:narrative)"
+                ), {**params_w, "narrative": txt})
+            return {"ok": True, "text": txt, "provider": src}
             label_t = payload.get("label") or indikator or payload.get("indikator")
             if not all([prov, tahun, bulan, moda, label_t]):
                 return {"error": "missing params"}

@@ -5,6 +5,8 @@
 // rincian pelabuhan/provinsi tujuan dan tidak boleh dijumlahkan dengan yang resmi.
 import { pool } from './db.js';
 import { namaPelabuhan } from './pelabuhan-nama.js';
+import { NEGARA_NAMA } from './negara-nama.js';
+export { NEGARA_NAMA };
 
 const BASIS_EKSPOR = 'PROVORIG';
 const BASIS_IMPOR = 'KPPBC';
@@ -367,20 +369,7 @@ function rekapNeraca(eksporRows, imporRows, tahun, bulan) {
   return out;
 }
 
-/** Nama negara untuk kode ISO2 yang muncul di data. */
-export const NEGARA_NAMA = {
-  CN: 'Tiongkok', JP: 'Jepang', US: 'Amerika Serikat', AU: 'Australia',
-  SG: 'Singapura', MY: 'Malaysia', KR: 'Korea Selatan', IN: 'India',
-  NZ: 'Selandia Baru', PG: 'Papua Nugini', TH: 'Thailand', VN: 'Vietnam',
-  PH: 'Filipina', HK: 'Hong Kong', TW: 'Taiwan', DE: 'Jerman', GB: 'Inggris',
-  NL: 'Belanda', FR: 'Prancis', IT: 'Italia', ES: 'Spanyol', BE: 'Belgia',
-  CH: 'Swiss', CA: 'Kanada', BR: 'Brasil', RU: 'Rusia', ID: 'Indonesia',
-  FI: 'Finlandia', MX: 'Meksiko', SE: 'Swedia', NO: 'Norwegia', DK: 'Denmark',
-  AT: 'Austria', PL: 'Polandia', TR: 'Turki', SA: 'Arab Saudi', AE: 'Uni Emirat Arab',
-  EG: 'Mesir', ZA: 'Afrika Selatan', AR: 'Argentina', CL: 'Cile', PE: 'Peru',
-  KH: 'Kamboja', LA: 'Laos', MM: 'Myanmar', BD: 'Bangladesh', LK: 'Sri Lanka',
-  PK: 'Pakistan', IR: 'Iran', IQ: 'Irak', KW: 'Kuwait', QA: 'Qatar',
-};
+
 
 /** Label HS 2 digit dari tabel dimensi, fallback "HSxx". */
 async function labelHs2() {
@@ -396,6 +385,7 @@ function beriLabel(daftar, dimensi, hs2Labels) {
       return { ...r, label: NEGARA_NAMA[kode] || r.label };
     }
     if (dimensi === 'hs2') {
+      if (/^Total/i.test(r.label)) return r;
       const lab = hs2Labels.get(String(r.label));
       return { ...r, label: lab || `HS${r.label}` };
     }

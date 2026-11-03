@@ -53,10 +53,39 @@ function chartScript(charts) {
   if (typeof Chart === 'undefined') return;
   var CFG = ${json};
   var nf = new Intl.NumberFormat('id-ID');
+  var barValueLabelPlugin = {
+    id: 'barValueLabels',
+    afterDatasetsDraw: function (chart) {
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.font = '600 11px system-ui, -apple-system, Segoe UI, sans-serif';
+      ctx.textAlign = 'center';
+      chart.data.datasets.forEach(function (dataset, di) {
+        var meta = chart.getDatasetMeta(di);
+        if (!meta || meta.hidden) return;
+        dataset.data.forEach(function (value, i) {
+          if (value === null || value === undefined || Number.isNaN(value)) return;
+          var el = meta.data[i];
+          if (!el) return;
+          var text = nf.format(value);
+          if (value < 0) {
+            ctx.textBaseline = 'top';
+            ctx.fillText(text, el.x, el.y + 4);
+          } else {
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(text, el.x, el.y - 4);
+          }
+        });
+      });
+      ctx.restore();
+    },
+  };
   CFG.forEach(function (c) {
     var el = document.getElementById(c.id);
     if (!el) return;
     var line = c.type === 'line';
+    var plugins = [];
+    if (!line && c.dataLabels) plugins.push(barValueLabelPlugin);
     new Chart(el, {
       type: c.type || 'bar',
       data: {
@@ -71,15 +100,22 @@ function chartScript(charts) {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { stacked: !line, grid: { display: false } },
-          y: { stacked: !line, beginAtZero: true, ticks: { callback: function (v) { return nf.format(v); } } }
+          x: { stacked: c.stacked !== undefined ? c.stacked : !line, grid: { display: false } },
+          y: {
+            stacked: c.stacked !== undefined ? c.stacked : !line,
+            display: c.hideYAxis ? false : true,
+            grid: { display: c.hideYAxis ? false : true },
+            beginAtZero: true,
+            ticks: { callback: function (v) { return nf.format(v); } }
+          }
         },
         plugins: {
           legend: { position: 'bottom' },
           title: { display: true, text: c.title, font: { size: 13, weight: '600' } },
           tooltip: { callbacks: { label: function (ctx) { return ctx.dataset.label + ': ' + nf.format(ctx.parsed.y); } } }
         }
-      }
+      },
+      plugins: plugins
     });
   });
 })();
@@ -839,7 +875,8 @@ function blokTabel({ nomor, judul, baris, labelKolom, konteks, kunci }) {
   const f = (v) => (v == null ? '&ndash;' : formatIdNumber(v, 2));
   const pct = (now, prev) => (now == null || prev == null || prev === 0
     ? '&ndash;' : formatIdNumber(((now - prev) / prev) * 100, 2));
-  const total = baris && baris.length ? baris[0].nilai : [null, null, null, null, null];
+  const totalRow = baris?.find((r) => /^Total/i.test(r.label));
+  const total = totalRow ? totalRow.nilai : (baris && baris.length ? baris[0].nilai : [null, null, null, null, null]);
   const peran = (v, base) => (v == null || base == null || base === 0
     ? '&ndash;' : formatIdNumber((v / base) * 100, 2));
   const selisih = (a, b) => (a == null || b == null ? '&ndash;' : formatIdNumber(a - b, 2));
@@ -890,7 +927,30 @@ function blokGrafik({ nomor, judul, canvasId, catatan, kosong }) {
  * Isi tab Laporan. Bagian 1-5 di dalam kartu "Ekspor", 6-9 di dalam kartu
  * "Impor", dan 10 berdiri sendiri sebagai kartu neraca.
  */
-function perdaganganLaporanView({ tahun, bulan, laporan, narasi = {}, province = '', isAdmin = false }) {
+function scaleLaporan(laporan, factor) {
+  if (!laporan) return laporan;
+  const scaleNilai = (nilai) => nilai.map((v) => (v == null ? null : v * factor));
+  const scaleRows = (rows) => rows.map((r) => ({ ...r, nilai: scaleNilai(r.nilai) }));
+  return {
+    ekspor: {
+      ringkasan: scaleRows(laporan.ekspor.ringkasan),
+      hs2: scaleRows(laporan.ekspor.hs2),
+      negara: scaleRows(laporan.ekspor.negara),
+      pelabuhan: scaleRows(laporan.ekspor.pelabuhan),
+    },
+    impor: {
+      ringkasan: scaleRows(laporan.impor.ringkasan),
+      hs2: scaleRows(laporan.impor.hs2),
+      negara: scaleRows(laporan.impor.negara),
+      pelabuhan: scaleRows(laporan.impor.pelabuhan),
+    },
+    neraca: {
+      ringkasan: scaleRows(laporan.neraca.ringkasan),
+    },
+  };
+}
+
+function perdaganganLaporanView({ tahun, bulan, laporan, narasi = {}, province = '', isAdmin = false, unit = 'Ribu US$' }) {
   const prev = bulan > 1 ? { tahun, bulan: bulan - 1 } : { tahun: tahun - 1, bulan: 12 };
   const konteks = { tahunLaporan: tahun, bulanLaporan: bulan, tahunPrev: prev.tahun,
     bulanPrev: prev.bulan, narasi, province, isAdmin };
@@ -906,6 +966,9 @@ function perdaganganLaporanView({ tahun, bulan, laporan, narasi = {}, province =
       chart: {
         id: canvasId,
         type: 'bar',
+        stacked: false,
+        dataLabels: true,
+        hideYAxis: true,
         title: judul,
         labels: baris.map((r) => r.label),
         datasets: [
@@ -917,9 +980,9 @@ function perdaganganLaporanView({ tahun, bulan, laporan, narasi = {}, province =
   };
 
   const gEkspor = grafikNegara('ekspor', 'pdg-negara-ekspor',
-    `Perbandingan Nilai Kumulatif Ekspor Menurut Negara Tujuan (Ribu US$), ${tahun - 1} dan ${tahun}`);
+    `Perbandingan Nilai Kumulatif Ekspor Menurut Negara Tujuan (${unit}), ${tahun - 1} dan ${tahun}`);
   const gImpor = grafikNegara('impor', 'pdg-negara-impor',
-    `Perbandingan Nilai Kumulatif Impor Menurut Negara Asal (Ribu US$), ${tahun - 1} dan ${tahun}`);
+    `Perbandingan Nilai Kumulatif Impor Menurut Negara Asal (${unit}), ${tahun - 1} dan ${tahun}`);
 
   const ekspor = laporan.ekspor;
   const impor = laporan.impor;
@@ -927,32 +990,32 @@ function perdaganganLaporanView({ tahun, bulan, laporan, narasi = {}, province =
 
   const kartuEkspor = `<section class="dashboard-card laporan-kartu">
   <div class="section-header"><h2>Ekspor</h2>
-    <span class="side-note">Nilai dalam Ribu US$, basis PROVORIG; pelabuhan muat basis POD.</span></div>
+    <span class="side-note">Nilai dalam ${unit}, basis PROVORIG; pelabuhan muat basis POD.</span></div>
   ${blokTabel({ nomor: 1, judul: 'Ringkasan Perkembangan Ekspor', baris: ekspor.ringkasan,
     labelKolom: 'Uraian', konteks, kunci: 'ekspor-ringkasan' })}
   ${blokTabel({ nomor: 2, judul: 'Nilai Ekspor Menurut Golongan HS 2 Digit (10 terbesar)', baris: ekspor.hs2,
     labelKolom: 'Golongan Barang', konteks, kunci: 'ekspor-hs2' })}
   ${blokTabel({ nomor: 3, judul: 'Nilai Ekspor Menurut Negara Tujuan (10 terbesar)', baris: ekspor.negara,
     labelKolom: 'Negara', konteks, kunci: 'ekspor-negara' })}
-  ${blokGrafik({ nomor: 4, judul: `Perbandingan Nilai Kumulatif Ekspor Menurut Negara Tujuan (Ribu US$), ${tahun - 1} dan ${tahun}`,
+  ${blokGrafik({ nomor: 4, judul: `Perbandingan Nilai Kumulatif Ekspor Menurut Negara Tujuan (${unit}), ${tahun - 1} dan ${tahun}`,
     canvasId: 'pdg-negara-ekspor', kosong: gEkspor.kosong,
-    catatan: `Kumulatif Januari–${bulanNama}, dalam Ribu US$.` })}
+    catatan: `Kumulatif Januari–${bulanNama}, dalam ${unit}.` })}
   ${blokTabel({ nomor: 5, judul: 'Nilai Ekspor Menurut Pelabuhan Muat', baris: ekspor.pelabuhan,
     labelKolom: 'Pelabuhan', konteks, kunci: 'ekspor-pelabuhan' })}
 </section>`;
 
   const kartuImpor = `<section class="dashboard-card laporan-kartu">
   <div class="section-header"><h2>Impor</h2>
-    <span class="side-note">Nilai dalam Ribu US$, basis KPPBC.</span></div>
+    <span class="side-note">Nilai dalam ${unit}, basis KPPBC.</span></div>
   ${blokTabel({ nomor: 6, judul: 'Nilai Impor Migas dan Nonmigas', baris: impor.ringkasan,
     labelKolom: 'Uraian', konteks, kunci: 'impor-ringkasan' })}
   ${blokTabel({ nomor: 7, judul: 'Nilai Impor Menurut Golongan HS 2 Digit (10 terbesar)', baris: impor.hs2,
     labelKolom: 'Golongan Barang', konteks, kunci: 'impor-hs2' })}
   ${blokTabel({ nomor: 8, judul: 'Nilai Impor Menurut Negara Asal (10 terbesar)', baris: impor.negara,
     labelKolom: 'Negara', konteks, kunci: 'impor-negara' })}
-  ${blokGrafik({ nomor: 9, judul: `Perbandingan Nilai Kumulatif Impor Menurut Negara Asal (Ribu US$), ${tahun - 1} dan ${tahun}`,
+  ${blokGrafik({ nomor: 9, judul: `Perbandingan Nilai Kumulatif Impor Menurut Negara Asal (${unit}), ${tahun - 1} dan ${tahun}`,
     canvasId: 'pdg-negara-impor', kosong: gImpor.kosong,
-    catatan: `Kumulatif Januari–${bulanNama}, dalam Ribu US$.` })}
+    catatan: `Kumulatif Januari–${bulanNama}, dalam ${unit}.` })}
 </section>`;
 
   // --- kartu 10: neraca, berdiri sendiri ---
@@ -972,7 +1035,7 @@ function perdaganganLaporanView({ tahun, bulan, laporan, narasi = {}, province =
   // Baris Neraca = n[2]; KPI memakai baris itu, bukan baris pertama.
   const neracaRow = n.find((r) => /^Neraca/i.test(r.label)) || n[n.length - 1] || { nilai: [] };
   const kartuNeraca = `<section class="dashboard-card laporan-kartu">
-  <div class="section-header"><h2>Neraca Perdagangan</h2></div>
+  <div class="section-header"><h2>Neraca Perdagangan</h2><span class="side-note">Nilai dalam ${unit}.</span></div>
   <div class="metric-grid">
     ${kpi(`Neraca ${bulanNama} ${tahun}`, neracaRow.nilai[2], statusNeraca(neracaRow.nilai[2]))}
     ${kpi(`Neraca Jan–${bulanNama} ${tahun}`, neracaRow.nilai[4], statusNeraca(neracaRow.nilai[4]))}
@@ -1008,6 +1071,11 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
   ringkasan, seri, hs2, negara, pelabuhan, periods, admin = null, laporan = null, narasi = {} }) {
   const f2 = (v) => formatIdNumber(v ?? 0, 2);
   const bulanName = MONTH_NAMES[bulan - 1] || '';
+  const isJuta = province === 'Papua Tengah';
+  const unit = isJuta ? 'Juta US$' : 'Ribu US$';
+  const rawDivisor = isJuta ? 1_000_000 : 1_000;
+  const ribuFactor = isJuta ? 0.001 : 1;
+  const scaleRows = (rows) => rows?.map((r) => ({ ...r, nilai: r.nilai == null ? null : r.nilai * ribuFactor }));
   const params = `provinsi=${encodeURIComponent(province)}&tahun=${tahun}&bulan=${bulan}`;
   const tabs = [
     { label: 'Ringkasan', href: `/perdagangan?tab=ringkasan&${params}`, active: tab === 'ringkasan' },
@@ -1064,24 +1132,24 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
   // KPI hanya untuk tab Ringkasan; tab Laporan punya kartu neraca sendiri.
   let metrik = '';
   if (ringkasan) {
-    const neraca = (ringkasan.bulanIni.ekspor - ringkasan.bulanIni.impor) / 1000;
-    const neracaKum = (ringkasan.kumulatif.ekspor - ringkasan.kumulatif.impor) / 1000;
+    const neraca = (ringkasan.bulanIni.ekspor - ringkasan.bulanIni.impor) / rawDivisor;
+    const neracaKum = (ringkasan.kumulatif.ekspor - ringkasan.kumulatif.impor) / rawDivisor;
     metrik = `<div class="metric-grid">
-  ${kpi('Ekspor (Ribu US$)', f2(ringkasan.bulanIni.ekspor / 1000),
-    `Migas ${f2(ringkasan.bulanIni.eksporMigas / 1000)} · Nonmigas ${f2(ringkasan.bulanIni.eksporNonMigas / 1000)}`)}
-  ${kpi('Impor (Ribu US$)', f2(ringkasan.bulanIni.impor / 1000),
-    `Migas ${f2(ringkasan.bulanIni.imporMigas / 1000)} · Nonmigas ${f2(ringkasan.bulanIni.imporNonMigas / 1000)}`)}
+  ${kpi(`Ekspor (${unit})`, f2(ringkasan.bulanIni.ekspor / rawDivisor),
+    `Migas ${f2(ringkasan.bulanIni.eksporMigas / rawDivisor)} · Nonmigas ${f2(ringkasan.bulanIni.eksporNonMigas / rawDivisor)}`)}
+  ${kpi(`Impor (${unit})`, f2(ringkasan.bulanIni.impor / rawDivisor),
+    `Migas ${f2(ringkasan.bulanIni.imporMigas / rawDivisor)} · Nonmigas ${f2(ringkasan.bulanIni.imporNonMigas / rawDivisor)}`)}
   ${kpi(`Neraca (${neraca >= 0 ? 'Surplus' : 'Defisit'})`, f2(neraca), 'Ekspor dikurangi impor',
     neraca >= 0 ? 'pos' : 'neg')}
   ${kpi(`Kumulatif Jan–${bulanName}`, f2(neracaKum),
-    `Ekspor ${f2(ringkasan.kumulatif.ekspor / 1000)} · Impor ${f2(ringkasan.kumulatif.impor / 1000)}`)}
+    `Ekspor ${f2(ringkasan.kumulatif.ekspor / rawDivisor)} · Impor ${f2(ringkasan.kumulatif.impor / rawDivisor)}`)}
 </div>`;
   }
 
   const grafik = `<section class="dashboard-card">
   <h2>Perkembangan Bulanan ${escapeHtml(String(tahun))}</h2>
   <div class="chart-frame" style="height:340px"><canvas id="pdg-seri"></canvas></div>
-  <p class="side-note">Ribu US$. Ekspor berbasis provinsi asal barang; impor berbasis KPPBC.
+  <p class="side-note">${unit}. Ekspor berbasis provinsi asal barang; impor berbasis KPPBC.
     Neraca per provinsi adalah perkiraan.</p>
 </section>`;
 
@@ -1128,20 +1196,21 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
 
   // Sama seperti Pariwisata: peran tanpa hak unduh tidak melihat kartunya.
   const bisaUnduh = user.role === 'admin' || user.role === 'user';
+  const laporanScaled = isJuta ? scaleLaporan(laporan, ribuFactor) : laporan;
   const laporanView = tab === 'laporan' && laporan
     ? perdaganganLaporanView({
-        tahun, bulan, laporan, narasi, province, isAdmin: user.role === 'admin',
+        tahun, bulan, laporan: laporanScaled, narasi, province, isAdmin: user.role === 'admin', unit,
       })
     : null;
   const isi = laporanView
     ? laporanView.html + (bisaUnduh ? unduh : '')
     : tab === 'rincian'
-    ? tabelPeran('Golongan Barang Ekspor (HS 2 digit)', hs2?.ekspor, 'Nilai FOB')
-      + tabelPeran('Golongan Barang Impor (HS 2 digit)', hs2?.impor, 'Nilai CIF')
-      + tabelPeran('Negara Tujuan Utama', negara?.ekspor, 'Nilai FOB')
-      + tabelPeran('Negara Asal Utama', negara?.impor, 'Nilai CIF')
-      + tabelPeran('Pelabuhan Muat Utama', pelabuhan?.ekspor, 'Nilai FOB')
-      + tabelPeran('Pelabuhan Bongkar Utama', pelabuhan?.impor, 'Nilai CIF')
+    ? tabelPeran('Golongan Barang Ekspor (HS 2 digit)', scaleRows(hs2?.ekspor), `Nilai FOB (${unit})`)
+      + tabelPeran('Golongan Barang Impor (HS 2 digit)', scaleRows(hs2?.impor), `Nilai CIF (${unit})`)
+      + tabelPeran('Negara Tujuan Utama', scaleRows(negara?.ekspor), `Nilai FOB (${unit})`)
+      + tabelPeran('Negara Asal Utama', scaleRows(negara?.impor), `Nilai CIF (${unit})`)
+      + tabelPeran('Pelabuhan Muat Utama', scaleRows(pelabuhan?.ekspor), `Nilai FOB (${unit})`)
+      + tabelPeran('Pelabuhan Bongkar Utama', scaleRows(pelabuhan?.impor), `Nilai CIF (${unit})`)
     : metrik + grafik;
 
   const body = `${header}${kontrol}${isi}`;
@@ -1151,12 +1220,12 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
     ? [{
         id: 'pdg-seri',
         type: 'line',
-        title: `Ekspor, Impor, dan Neraca ${province} ${tahun} (Ribu US$)`,
+        title: `Ekspor, Impor, dan Neraca ${province} ${tahun} (${unit})`,
         labels: MONTH_NAMES,
         datasets: [
-          { label: 'Ekspor', data: seri?.ekspor || [], color: '#0f766e' },
-          { label: 'Impor', data: seri?.impor || [], color: '#b45309' },
-          { label: 'Neraca', data: seri?.neraca || [], color: '#6366f1' },
+          { label: 'Ekspor', data: (seri?.ekspor || []).map((v) => (v == null ? null : v * ribuFactor)), color: '#0f766e' },
+          { label: 'Impor', data: (seri?.impor || []).map((v) => (v == null ? null : v * ribuFactor)), color: '#b45309' },
+          { label: 'Neraca', data: (seri?.neraca || []).map((v) => (v == null ? null : v * ribuFactor)), color: '#6366f1' },
         ],
       }]
     : [];
@@ -2023,8 +2092,9 @@ function reportTab(report, isAdmin, user = { role: 'user' }) {
   }).join('')).join('');
 
   const wisnus = report.wisnus ? wisnusCard(report, configs, isAdmin) : '';
+  const wisman = report.wisman ? wismanCard(report, configs, isAdmin) : '';
   const canExport = user.role === 'admin' || user.role === 'user';
-  return { html: `${head}${cards}${wisnus}${canExport ? pariwisataExportCard(report) : ''}`, configs };
+  return { html: `${head}${cards}${wisman}${wisnus}${canExport ? pariwisataExportCard(report) : ''}`, configs };
 }
 
 /**
@@ -2077,13 +2147,10 @@ function wisnusCard(report, configs, isAdmin = false) {
       id: 'wisnus-seri',
       type: 'line',
       title: judulSeri,
-      // Menyalakan bulanLabelPlugin: nilai bulan berjalan dicetak di titiknya,
-      // untuk tahun berjalan dan tahun yang sama sebelumnya.
       monthIndex: report.month - 1,
       unit: '',
       labels: bulanAda.map((b) => MONTH_NAMES[b - 1]),
       datasets: [
-        // Warna sama dengan seri laporan lain (PREV/CUR_COLOR di reportTab).
         { label: `Kunjungan ${tahunLalu}`, data: bulanAda.map((b) => lalu.get(b) ?? null), color: '#70AD47' },
         { label: `Kunjungan ${tahunIni}`, data: bulanAda.map((b) => ini.get(b) ?? null), color: '#ED7D31' },
       ],
@@ -2141,6 +2208,109 @@ function wisnusCard(report, configs, isAdmin = false) {
   ${tabelBulan}
   <h3>${escapeHtml(judulTujuan)}</h3>
   <div class="chart-frame" style="height:340px"><canvas id="wisnus-tujuan"></canvas></div>
+</section>`;
+}
+
+/**
+ * Kartu Jumlah Wisatawan Mancanegara (Wisman): seri bulanan tahun lalu vs tahun ini,
+ * angka bulan berjalan/kumulatif, dan negara asal teratas.
+ */
+function wismanCard(report, configs = [], isAdmin = false) {
+  const w = report.wisman || {};
+  const seri = w.seri || [];
+  const tahunIni = report.year;
+  const tahunLalu = tahunIni - 1;
+  const peta = (t) => new Map(seri.filter((r) => r.tahun === t).map((r) => [r.bulan, r.jumlah]));
+  const ini = peta(tahunIni);
+  const lalu = peta(tahunLalu);
+  const bulanAda = [...new Set([...ini.keys(), ...lalu.keys()])].sort((a, b) => a - b);
+
+  const judulSeri = `Perkembangan Wisatawan Mancanegara di ${report.province}, `
+    + `Januari ${tahunLalu} - ${MONTH_NAMES[report.month - 1]} ${tahunIni}`;
+  const judulNegara = `Jumlah Wisatawan Mancanegara berdasar Negara Asal di ${report.province}, `
+    + `Januari-${MONTH_NAMES[report.month - 1]} ${tahunIni}`;
+
+  const pct = (a, b) => (b ? ((a - b) / b) * 100 : null);
+  const formatPct = (v) => (v === null || v === undefined ? '-' : `${formatIdNumber(v, 2)} persen`);
+  const bulan = report.month;
+  const kini = ini.get(bulan) ?? 0;
+  const sblm = ini.get(bulan - 1) ?? null;
+  const tahunLaluBulan = lalu.get(bulan) ?? null;
+  const kpi = (judul, nilai, sub = '') => `<div class="metric-card">
+    <span class="stat-label">${escapeHtml(judul)}</span>
+    <span class="metric-value">${escapeHtml(nilai)}</span>
+    ${sub ? `<span class="side-note">${escapeHtml(sub)}</span>` : ''}
+  </div>`;
+
+  if (bulanAda.length) {
+    configs.push({
+      id: 'wisman-seri',
+      type: 'line',
+      title: judulSeri,
+      monthIndex: report.month - 1,
+      unit: '',
+      labels: bulanAda.map((b) => MONTH_NAMES[b - 1]),
+      datasets: [
+        { label: `Wisman ${tahunLalu}`, data: bulanAda.map((b) => lalu.get(b) ?? null), color: '#70AD47' },
+        { label: `Wisman ${tahunIni}`, data: bulanAda.map((b) => ini.get(b) ?? null), color: '#ED7D31' },
+      ],
+    });
+  }
+
+  const negara = (w.negara || []).slice(0, 10);
+  if (negara.length) {
+    configs.push({
+      id: 'wisman-negara',
+      type: 'bar',
+      title: judulNegara,
+      labels: negara.map((n) => n.nama || n.kode),
+      datasets: [{ label: 'Jumlah wisatawan', data: negara.map((n) => n.jumlah), color: '#ED7D31' }],
+    });
+  }
+
+  const WARNA_LALU = '#70AD47';
+  const WARNA_INI = '#ED7D31';
+  const bulanKolom = Array.from({ length: 12 }, (_, i) => i + 1);
+  const selNilai = (map, b) => (map.has(b) ? formatIdNumber(map.get(b), 0) : '');
+  const barisTahun = (tahun, map, warna) => `<tr>
+    <th>${legendSwatch(warna, escapeHtml(String(tahun)))}</th>
+    ${bulanKolom.map((b) => `<td>${selNilai(map, b)}</td>`).join('')}</tr>`;
+  const tabelBulan = `<div class="table-scroll"><table class="data-table yoy-grid">
+  <thead><tr><th>Tahun</th>${bulanKolom.map((b) => `<th>${MONTH_NAMES[b - 1]}</th>`).join('')}</tr></thead>
+  <tbody>${barisTahun(tahunLalu, lalu, WARNA_LALU)}${barisTahun(tahunIni, ini, WARNA_INI)}</tbody>
+</table></div>`;
+
+  const totalKum = w.totalKum || 0;
+  const narasiWisman = (report.wisman && report.wisman.narasi) ? String(report.wisman.narasi) : null;
+  const fieldsW = `<input type="hidden" name="provinsi" value="${escapeHtml(report.province)}">
+    <input type="hidden" name="tahun" value="${report.year}">
+    <input type="hidden" name="bulan" value="${report.month}">
+    <input type="hidden" name="bagian" value="wisman">`;
+  let narasiHtml;
+  if (narasiWisman) {
+    const paras = narasiWisman.split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
+    narasiHtml = `<div class="ai-note"><strong>🤖 Narasi AI Wisman:</strong>${paras}
+      <div class="narrative-actions"><form method="post" action="/api/wisnus/narrative" class="inline-form">${fieldsW}
+        <button class="btn btn-secondary" type="submit">🔄 Regenerasi</button></form></div></div>`;
+  } else if (isAdmin) {
+    narasiHtml = `<div class="alert alert-info">Narasi AI Wisman belum dibuat.
+      <form method="post" action="/api/wisnus/narrative" class="inline-form">${fieldsW}
+        <button class="btn btn-primary" type="submit">🤖 Buat Narasi AI</button></form></div>`;
+  } else {
+    narasiHtml = `<div class="alert alert-info">Narasi AI Wisman belum tersedia. Hubungi admin untuk membuatnya.</div>`;
+  }
+
+  return `<section class="dashboard-card report-card">
+  <div class="card-header"><h3>Jumlah Wisatawan Mancanegara (Wisman)</h3>
+    <button type="button" class="btn btn-ghost" style="width:auto;font-size:12px;padding:6px 10px" onclick="window.unduhGrafik('wisman-seri', 'kunjungan-wisman.png')">&#128229; Unduh Grafik (PNG)</button></div>
+  ${narasiHtml}
+  <div class="ai-note">Wisman ${MONTH_NAMES[bulan - 1]} ${tahunIni} sebanyak <b>${formatIdNumber(kini, 0)}</b> wisatawan,
+    ${pct(kini, sblm) === null ? 'tanpa pembanding bulan sebelumnya' : `berubah ${formatPct(pct(kini, sblm))} dibanding ${MONTH_NAMES[bulan - 2] || ''} ${tahunIni}`};
+    year-on-year ${formatPct(pct(kini, tahunLaluBulan))}. Kumulatif Januari–${MONTH_NAMES[bulan - 1]} ${tahunIni}
+    mencapai <b>${formatIdNumber(totalKum, 0)}</b> wisatawan menurut negara asal.</div>
+  <div class="chart-frame" style="height:340px"><canvas id="wisman-seri"></canvas></div>
+  ${tabelBulan}
+  ${negara.length ? `<h3>${escapeHtml(judulNegara)}</h3><div class="chart-frame" style="height:340px"><canvas id="wisman-negara"></canvas></div>` : ''}
 </section>`;
 }
 

@@ -20,6 +20,25 @@ a { color: inherit; text-decoration: none; }
 .side-note { font-size: 11.5px; color: var(--ink-dim); line-height: 1.45; margin: 0; }
 .app-main { padding: 28px 36px 40px; max-width: 1280px; width: 100%; box-sizing: border-box; }
 
+/* Responsiveness */
+@media (max-width: 1024px) {
+  .app-shell { grid-template-columns: 240px 1fr; }
+  .app-main { padding: 20px; }
+}
+
+@media (max-width: 768px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .app-side {
+    position: relative; height: auto; border-right: none; border-bottom: 1px solid var(--line);
+  }
+  .app-main { padding: 20px; }
+  .section-hero { flex-direction: column; align-items: flex-start; text-align: left; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .field input, .field-inline select { min-width: 100%; }
+  .chart-grid, .table-grid { grid-template-columns: 1fr; }
+}
+
+
 .btn {
   font-family: inherit; font-size: 14px; font-weight: 700; border-radius: 10px;
   padding: 11px 16px; border: 1px solid var(--line); background: var(--surface);

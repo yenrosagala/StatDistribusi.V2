@@ -34,7 +34,7 @@ import {
   perdaganganRingkasPeriode,
 } from './perdagangan.js';
 import { parsePerdaganganZip, savePerdagangan } from './etl-perdagangan.js';
-import { parseWisnusWorkbook, saveWisnus, wisnusRekap } from './wisnus.js';
+import { parseWisnusWorkbook, saveWisnus, wisnusRekap, wismanRekap } from './wisnus.js';
 import { readZip } from './zip-reader.js';
 import { deleteStaged, getStaged, pruneStaged, putStaged, stagingStore } from './upload-store.js';
 import { cellKey, deleteNote, getNote, normaliseCell, noteKeysFor, saveNote } from './growth-notes.js';
@@ -641,6 +641,12 @@ async function loadReport(url, info, session = { role: 'admin' }) {
     console.warn('[pariwisata] wisnus tidak terbaca:', err.message);
     report.wisnus = null;
   }
+  try {
+    report.wisman = await wismanRekap(province, year, month);
+  } catch (err) {
+    console.warn('[pariwisata] wisman tidak terbaca:', err.message);
+    report.wisman = null;
+  }
 
   const prevMonth = month > 1 ? month - 1 : 12;
   const prevYear = month > 1 ? year : year - 1;
@@ -668,6 +674,7 @@ async function loadReport(url, info, session = { role: 'admin' }) {
   // Narasi Wisnus disimpan dengan penanda jenis_akomodasi='wisnus' &
   // indicator='wisnus' agar tidak bentrok dengan narasi TPK/RLMTGAB.
   if (report.wisnus) report.wisnus.narasi = narrativeBy.get('wisnus|wisnus') || null;
+  if (report.wisman) report.wisman.narasi = narrativeBy.get('wisman|wisman') || null;
   const current = rows.filter((r) => Number(r.year) === year && Number(r.month) === month);
   if (!current.length) return report;
 
@@ -1384,6 +1391,7 @@ async function buildPerdagangan(session, url) {
       const provinsi = form.get('provinsi') || '';
       const tahun = Number(form.get('tahun'));
       const bulan = Number(form.get('bulan'));
+      const bagian = form.get('bagian') || 'wisnus';
       const balik = `/pariwisata?tab=report&provinsi=${encodeURIComponent(provinsi)}`
         + `&tahun=${tahun}&bulan=${encodeURIComponent(MONTH_NAMES[bulan - 1] || '')}`;
       if (!TARGET_PROVINCES.includes(provinsi)
@@ -1392,12 +1400,12 @@ async function buildPerdagangan(session, url) {
       }
       try {
         const payload = await runNarrativeBridge({
-          kind: 'wisnus', provinsi, tahun, bulan, action: 'generate',
+          kind: bagian === 'wisman' ? 'wisman' : 'wisnus', provinsi, tahun, bulan, action: 'generate',
         });
         if (payload && payload.error) {
           return redirect(res, flash(balik, `Narasi gagal dibuat: ${payload.error}`, false));
         }
-        return redirect(res, flash(balik, 'Narasi Wisnus berhasil dibuat.', true));
+        return redirect(res, flash(balik, bagian === 'wisman' ? 'Narasi Wisman berhasil dibuat.' : 'Narasi Wisnus berhasil dibuat.', true));
       } catch (err) {
         return redirect(res, flash(balik, `Narasi gagal dibuat: ${err.message}`, false));
       }
