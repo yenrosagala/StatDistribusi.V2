@@ -767,13 +767,14 @@ async function buildPariwisata(session, url) {  const rows = await pariwisataInf
   const provCount = new Set(rows.map((r) => String(r.kd_prov))).size;
   const allowed = tabsFor(ROLE_TABS_PARIWISATA, session.role);
   const requested = url.searchParams.get('tab');
+  if (requested === 'admin' && session.role === 'admin') {
+    const admin = await buildPariwisataAdmin(session, url, { uploads: stagingStore, readFlash });
+    return pariwisataPage({ user: session, info: { rows, provCount, metrics }, periods, tab: 'admin', map: null, report: null, admin });
+  }
   const tab = allowed.includes(requested) ? requested : allowed[0];
   const map = tab === 'map' && rows.length ? await loadMap(url, rows) : null;
   const report = tab === 'report' && rows.length ? await loadReport(url, rows, session) : null;
-  const admin = tab === 'admin' && session.role === 'admin'
-    ? await buildPariwisataAdmin(session, url, { uploads: stagingStore, readFlash })
-    : null;
-  return pariwisataPage({ user: session, info: { rows, provCount, metrics }, periods, tab, map, report, admin });
+  return pariwisataPage({ user: session, info: { rows, provCount, metrics }, periods, tab, map, report, admin: null });
 }
 
 
