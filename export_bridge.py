@@ -996,8 +996,112 @@ def build_idml_exim(payload):
     return _paket_dengan_peringatan(paket, warnings)
 
 
+def build_pptx_template(payload):
+    """Fill the placeholder-based dashboard template with current data.
+
+    Expected payload:
+      {
+        "title": str,
+        "subtitle": str,
+        "slides": [
+          {
+            "title": str,
+            "charts": [{"name": "Chart1", "png": <bytes or base64>}, ...],
+            "tables": [{"name": "Table1", "columns": [...], "rows": [...]}, ...],
+            "narrative": [str, ...]
+          },
+          ...
+        ]
+      }
+    """
+    import base64
+    import io
+
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+
+    template_path = Path(__file__).resolve().parent / "templates" / "dashboard_template.pptx"
+    if not template_path.exists():
+        raise SystemExit(f"Template not found: {template_path}")
+
+    prs = Presentation(str(template_path))
+
+    # Title slide (slide 0)
+    title_slide = prs.slides[0]
+    for shape in title_slide.shapes:
+        if shape.name == "Title" and shape.has_text_frame:
+            shape.text_frame.text = payload.get("title", "")
+        elif shape.name == "Subtitle" and shape.has_text_frame:
+            shape.text_frame.text = payload.get("subtitle", "")
+
+    def fill_slide(slide, data):
+        for shape in slide.shapes:
+            name = shape.name
+            if name == "SlideTitle" and shape.has_text_frame:
+                shape.text_frame.text = data.get("title", "")
+            elif name.startswith("Chart") and shape.has_text_frame:
+                chart_data = next((c for c in data.get("charts", []) if c.get("name") == name), None)
+                if chart_data:
+                    png = chart_data.get("png")
+                    if isinstance(png, str):
+                        png = base64.b64decode(png)
+                    if png:
+                        sp = shape._element
+                        sp.getparent().remove(sp)
+                        slide.shapes.add_picture(io.BytesIO(png), shape.left, shape.top,
+                                                width=shape.width, height=shape.height)
+            elif name.startswith("Table") and shape.has_text_frame:
+                tbl = next((t for t in data.get("tables", []) if t.get("name") == name), None)
+                if tbl:
+                    sp = shape._element
+                    sp.getparent().remove(sp)
+                    grid = slide.shapes.add_table(
+                        len(tbl["rows"]) + 1, len(tbl["columns"]),
+                        shape.left, shape.top, shape.width, shape.height).table
+                    for j, head in enumerate(tbl["columns"]):
+                        grid.cell(0, j).text = str(head)
+                    for i, row in enumerate(tbl["rows"], start=1):
+                        for j, val in enumerate(row):
+                            grid.cell(i, j).text = "" if val is None else str(val)
+                    for r_i, row in enumerate(grid.rows):
+                        row.height = Inches(0.25)
+                        for cell in row.cells:
+                            for para in cell.text_frame.paragraphs:
+                                for run in para.runs:
+                                    run.font.size = Pt(8)
+                                    if r_i == 0:
+                                        run.font.bold = True
+            elif name == "Narrative" and shape.has_text_frame:
+                paras = data.get("narrative", [])
+                tf = shape.text_frame
+                tf.text = ""
+                first = True
+                for text in paras:
+                    para = tf.paragraphs[0] if first else tf.add_paragraph()
+                    para.text = text or ""
+                    first = False
+                    for run in para.runs:
+                        run.font.size = Pt(10)
+
+    slides_data = payload.get("slides", [])
+    if slides_data:
+        fill_slide(prs.slides[1], slides_data[0])
+        from copy import deepcopy
+        for extra in slides_data[1:]:
+            new_slide = prs.slides.add_slide(prs.slide_layouts[6])
+            for shape in prs.slides[1].shapes:
+                el = deepcopy(shape._element)
+                new_slide.shapes._spTree.insert_element_before(el, 'p:extLst')
+            fill_slide(new_slide, extra)
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
 BUILDERS = {
     "pptx": build_pptx,
+    "pptx-template": build_pptx_template,
     "docx": build_docx,
     "xlsx-transport": build_xlsx_transport,
     "xlsx-pariwisata": build_xlsx_pariwisata,
