@@ -1,0 +1,30 @@
+# Jangan ikut ke image: dependensi di-install di dalam build, sisanya lokal/debug.
+node_modules
+npm-debug.log*
+
+.git
+.gitignore
+.dockerignore
+
+# entry Vercel, bukan bagian deployment container
+api
+
+# arsip database + cache lokal
+backup
+__pycache__
+**/__pycache__
+*.pyc
+pytest-cache-files-*
+exports
+*.log
+nodeout.txt
+nodeerr.txt
+testout.txt
+
+# rahasia lokal
+.env
+.env.local
+
+# berkas kerja InDesign: eksportir hanya membaca .idml + Document fonts/ + Links/
+templates/*/*.indd
+templates/*/*.pdf

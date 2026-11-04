@@ -914,3 +914,45 @@ test('server memetakan rute bahan-tayang ke builder yang tepat', () => {
   ['bahan-tayang-transport', 'bahan-tayang-pariwisata', 'bahan-tayang-perdagangan']
     .forEach((kind) => assert.ok(serverSource.includes(kind), `builder ${kind} dipanggil`));
 });
+
+// ---------------------------------------------------------------------------
+// Deployment: health check, SIGTERM, cookie Secure, dan artefak server.
+// ---------------------------------------------------------------------------
+test('server punya /health publik untuk load balancer', () => {
+  assert.ok(serverSource.includes("url.pathname === '/health'"), 'rute /health ada');
+  assert.ok(serverSource.includes('uptime'), '/health melaporkan uptime');
+});
+
+test('server menangani SIGTERM, bukan hanya SIGINT', () => {
+  // Container dan platform mengirim SIGTERM; tanpa handler pool tidak ditutup.
+  assert.ok(serverSource.includes("process.on('SIGTERM'"), 'SIGTERM ditangani');
+  assert.ok(serverSource.includes("process.on('SIGINT'"), 'SIGINT tetap ditangani');
+});
+
+test('cookie sesi jadi Secure hanya saat diminta lewat env', () => {
+  assert.ok(serverSource.includes("process.env.COOKIE_SECURE === '1'"),
+    'Secure harus opt-in, bukan mengikuti NODE_ENV');
+  // Login dan logout sama-sama menambahkan Secure, kalau tidak sesi HTTPS
+  // tidak bisa dihapus oleh browser.
+  assert.equal((serverSource.match(/\$\{COOKIE_SECURE\}/g) || []).length, 2,
+    'cookie login dan logout memakai Secure');
+});
+
+test('artefak deployment lengkap: Dockerfile, .dockerignore, requirements, .env.example', () => {
+  const read = (name) => readFileSync(new URL(`./${name}`, import.meta.url), 'utf8');
+  const dockerfile = read('Dockerfile');
+  assert.ok(dockerfile.includes('npm ci --omit=dev'), 'dependensi produksi saja');
+  assert.ok(dockerfile.includes('pip install -r requirements.txt'), 'runtime Python ikut dibangun');
+  assert.ok(dockerfile.includes('/health'), 'HEALTHCHECK memakai /health');
+  assert.ok(dockerfile.includes('USER node'), 'tidak berjalan sebagai root');
+  assert.ok(read('.dockerignore').includes('node_modules'), 'node_modules tidak ikut konteks');
+  const req = read('requirements.txt');
+  assert.ok(req.includes('psycopg2-binary'), 'driver yang dipakai SQLAlchemy');
+  assert.ok(req.includes('pillow'), 'PIL dipakai indesign_export');
+  assert.ok(!/^streamlit/m.test(req), 'streamlit asli digantikan shim vendor/py');
+  const env = read('.env.example');
+  ['DATABASE_URL', 'SESSION_SECRET', 'COOKIE_SECURE', 'PORT'].forEach((k) => {
+    assert.ok(env.includes(k), `.env.example menjelaskan ${k}`);
+  });
+});
+

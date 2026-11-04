@@ -52,6 +52,14 @@ const PORT = Number(process.env.PORT || 8502);
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const COOKIE = 'sid';
 const SESSION_SECONDS = 8 * 3600;
+// Di belakang HTTPS cookie sesi harus Secure. Opt-in lewat env, bukan NODE_ENV:
+// container yang diakses lewat http:// biasa akan langsung gagal login kalau
+// Secure dipaksa tanpa TLS.
+const COOKIE_SECURE = process.env.COOKIE_SECURE === '1' ? '; Secure' : '';
+if (!process.env.SESSION_SECRET) {
+  console.warn('[auth] SESSION_SECRET tidak diset: kunci sesi acak per start, '
+    + 'semua pengguna logout setiap restart. Setel SESSION_SECRET di server.');
+}
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
 // Directory holding the Python bridge scripts (gen_narrative.py, gen_summary.py).
 const NODE_ROOT = fileURLToPath(new URL('./', import.meta.url));
@@ -925,6 +933,12 @@ const requestHandler = async (req, res) => {
       return await serveStatic(res, url.pathname);
     }
 
+    if (req.method === 'GET' && url.pathname === '/health') {
+      // Liveness untuk load balancer / HEALTHCHECK. Publik dan tanpa sentuh DB:
+      // probe tiap 30 detik tidak boleh membuka koneksi Postgres.
+      return json(res, { ok: true, uptime: Math.round(process.uptime()) });
+    }
+
     if (req.method === 'GET' && url.pathname === '/login') {
       return sendHtml(res, loginPage());
     }
@@ -943,7 +957,7 @@ const requestHandler = async (req, res) => {
       });
       const landing = account.role === 'rekon' ? '/pariwisata?tab=report' : '/';
       return redirect(res, landing, {
-        'Set-Cookie': `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_SECONDS}`,
+        'Set-Cookie': `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_SECONDS}${COOKIE_SECURE}`,
       });
     }
 
@@ -952,7 +966,7 @@ const requestHandler = async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/logout') {
       return redirect(res, '/login', {
-        'Set-Cookie': `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+        'Set-Cookie': `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${COOKIE_SECURE}`,
       });
     }
 
@@ -1872,10 +1886,15 @@ if (!ON_VERCEL) {
     }
   });
 
-  process.on('SIGINT', async () => {
-    await pool.end();
-    server.close(() => process.exit(0));
-  });
+  // Container/platform mengirim SIGTERM, bukan SIGINT. Tanpa handler, request
+  // yang masih jalan diputus dan pool tidak ditutup.
+  const shutdown = () => {
+    setTimeout(() => process.exit(1), 10_000).unref();   // jangan menggantung selamanya
+    server.close(() => pool.end().finally(() => process.exit(0)));
+    server.closeIdleConnections?.();
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 } else {
   // Document export needs a Python bridge, which does not exist on Vercel.
   setExportAvailability(false);
