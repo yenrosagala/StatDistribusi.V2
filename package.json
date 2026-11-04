@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Read-only Node.js clone of the Pariwisata & Transportasi Papua dashboard, reading the same PostgreSQL database.",
   "scripts": {
-    "start": "node --env-file-if-exists=../.env server.js",
+    "start": "node --env-file-if-exists=../.env --env-file-if-exists=.env server.js",
     "dev": "nodemon --config nodemon.json server.js",
     "test": "node --test test.js",
     "export-service": "python export_service.py",

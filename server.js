@@ -86,6 +86,17 @@ const USERS = {
   rekon: { password: envSandi('REKON') || 'rekon123', role: 'rekon', name: 'Analis Rekon' },
 };
 
+// Akun tambahan tanpa mengubah tiga akun bawaan. Format env:
+//   LOGIN_EXTRA_USERS="alice:s3cret:user:Alice, bob:p4ss:rekon:Bob Smith"
+// Peran harus admin/user/rekon; nama boleh kosong (jatuh ke username).
+for (const entry of (process.env.LOGIN_EXTRA_USERS || '').split(',')) {
+  const parts = entry.split(':').map((s) => s.trim());
+  const [uname, passwd, role] = parts;
+  if (uname && passwd && ['admin', 'user', 'rekon'].includes(role)) {
+    USERS[uname] = { password: passwd, role, name: parts.slice(3).join(':') || uname };
+  }
+}
+
 // Single source of truth for which tabs a role may open.
 const ROLE_TABS = {
   admin: ['dashboard', 'report', 'admin'],

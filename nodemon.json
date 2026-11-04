@@ -3,5 +3,5 @@
   "ignore": ["node_modules", "templates", "backup", "exports", "test.js", "*.log"],
   "ext": "js,mjs,css,json",
   "delay": 400,
-  "exec": "node --env-file-if-exists=../.env"
+  "exec": "node --env-file-if-exists=../.env --env-file-if-exists=.env"
 }

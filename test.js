@@ -956,3 +956,18 @@ test('artefak deployment lengkap: Dockerfile, .dockerignore, requirements, .env.
   });
 });
 
+test('akun tambahan dari LOGIN_EXTRA_USERS tetap didukung', () => {
+  // Server produksi memakai akun "bps" dari env ini, bukan tiga akun bawaan.
+  assert.ok(serverSource.includes('LOGIN_EXTRA_USERS'), 'env dibaca');
+  assert.ok(/USERS\[uname\]\s*=/.test(serverSource), 'entri didaftarkan ke USERS');
+  assert.ok(serverSource.includes("['admin', 'user', 'rekon'].includes(role)"),
+    'peran di luar tiga itu ditolak');
+});
+
+test('npm start membaca .env lokal maupun ../.env', () => {
+  const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+  assert.ok(pkg.scripts.start.includes('--env-file-if-exists=../.env'), 'tetap jalan untuk dev di node-app');
+  assert.ok(pkg.scripts.start.includes('--env-file-if-exists=.env'), 'server memakai .env di folder aplikasi');
+});
+
+
