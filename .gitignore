@@ -32,3 +32,7 @@ Ringkasan_*.pdf
 # the exporters only read the .idml plus Document fonts/ and Links/.
 templates/*/*.indd
 templates/*/*.pdf
+
+# dev watcher output
+nodemon.out.txt
+nodemon.err.txt
