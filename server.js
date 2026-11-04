@@ -96,8 +96,10 @@ const MODA = [
     title: 'Laut',
     table: 'transportasi_laut',
     satuan: 'ton',
-    colsP: ['penumpang_naik', 'penumpang_turun'],
-    colsB: ['muat_barang_ton', 'bongkar_barang_ton'],
+    // Kolom tabel transportasi_laut memakai awalan dn_ (dalam negeri); nama
+    // tanpa awalan membuat agregasi selalu 0 dan grafik laut kosong.
+    colsP: ['dn_penumpang_naik', 'dn_penumpang_turun'],
+    colsB: ['dn_muat_barang_ton', 'dn_bongkar_barang_ton'],
     labelsP: ['PENUMPANG BERANGKAT', 'PENUMPANG DATANG'],
     labelsB: ['MUAT BARANG', 'BONGKAR BARANG'],
     colorsP: ['#047857', '#6EE7B7'],
@@ -1626,6 +1628,62 @@ async function buildPerdagangan(session, url) {
       };
       const data = await runExport('pptx', payload);
       return sendFile(res, data, EXPORT_MIME.pptx, exportFileName('pptx', { bln: selected.bln, thn: selected.thn }));
+    }
+
+    // Same dashboard data as the deck above, but poured into the editable
+    // templates/dashboard_template.pptx placeholders instead of a bare deck.
+    if (url.pathname === '/export/transportasi/pptx-template') {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
+      const periods = sortPeriods(await availablePeriods());
+      const selected = pickPeriod(periods, url.searchParams.get('periode'));
+      const prev = prevPeriod(selected.thn, selected.bln);
+      const sections = (await Promise.all(MODA.map((moda) => buildSection(moda, selected, prev))))
+        .filter((s) => !s.empty);
+      if (!sections.length) return sendHtml(res, errorPage('Belum ada data untuk periode ini.'), 404);
+      const payload = {
+        title: 'Dashboard Transportasi Papua',
+        subtitle: `${selected.bln} ${selected.thn}`,
+        sections: sections.map((s) => ({
+          moda: s.moda,
+          bln: selected.bln,
+          thn: selected.thn,
+          charts: s.charts,
+          tables: [growthTable(s.growthP, s.labelsP), growthTable(s.growthB, s.labelsB)],
+          narration: s.narrative.paras,
+        })),
+      };
+      const data = await runExport('pptx-template-sections', payload);
+      const name = exportFileName('pptx', { bln: selected.bln, thn: selected.thn })
+        .replace('.pptx', '_template.pptx');
+      return sendFile(res, data, EXPORT_MIME.pptx, name);
+    }
+
+    // Official "Bahan Tayang" decks: the BPS template is filled with the
+    // current period's figures (charts + captions + tables).
+    if (url.pathname.endsWith('/bahan-tayang')) {
+      if (denyExport(session)) return sendHtml(res, errorPage('Akses ekspor ditolak untuk peran ini.'), 403);
+      const modul = url.pathname.split('/')[2];
+      const kinds = {
+        transportasi: { kind: 'bahan-tayang-transport', prov: null },
+        pariwisata: { kind: 'bahan-tayang-pariwisata', prov: null },
+        perdagangan: { kind: 'bahan-tayang-perdagangan', prov: null },
+      };
+      const spec = kinds[modul];
+      if (!spec) return sendHtml(res, errorPage('Modul ekspor tidak dikenal.'), 404);
+      const rawPeriode = url.searchParams.get('periode') || '';
+      const match = /^(\d{4})-(.+)$/.exec(rawPeriode);
+      const tahun = match ? Number(match[1]) : Number(url.searchParams.get('tahun'));
+      const bulan = match ? match[2] : (url.searchParams.get('bulan') || '');
+      if (!MONTH_NAMES.includes(bulan) || !Number.isInteger(tahun)) {
+        return sendHtml(res, errorPage('Tahun atau bulan tidak valid.'), 400);
+      }
+      try {
+        const data = await runExport(spec.kind, { thn: tahun, bln: bulan });
+        const nama = `Bahan_Tayang_${modul[0].toUpperCase()}${modul.slice(1)}_${bulan}_${tahun}.pptx`;
+        return sendFile(res, data, EXPORT_MIME.pptx, nama);
+      } catch (err) {
+        return sendHtml(res, errorPage(`Ekspor bahan tayang gagal: ${err.message}`), 500);
+      }
     }
 
     if (req.url.startsWith('/export/transportasi/') && denyExport(session)) {

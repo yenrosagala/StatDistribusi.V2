@@ -873,3 +873,44 @@ test('skrip inline di halaman perdagangan bebas galat sintaks', () => {
   });
   assert.ok(html.includes('generate-semua-slot'), 'slot tombol generate semua ada untuk admin');
 });
+
+// ---------------------------------------------------------------------------
+// Bahan Tayang (deck resmi BPS): tombol unduh per modul + rute ekspor.
+// ---------------------------------------------------------------------------
+test('tombol Bahan Tayang tersedia di dashboard Transportasi', () => {
+  const html = transportasiPage({
+    user: { name: 'Admin', role: 'admin' },
+    periods: [{ thn: 2026, bln: 'September' }],
+    selected: { thn: 2026, bln: 'September' },
+    sections: [],
+    tab: 'dashboard',
+  });
+  assert.ok(html.includes('/export/transportasi/bahan-tayang?periode=2026-September'),
+    'tautan bahan tayang transportasi memakai periode aktif');
+});
+
+test('tombol Bahan Tayang tersedia di Laporan Perdagangan', () => {
+  const nilai = [null, null, 100, null, 250];
+  const laporan = {
+    ekspor: { ringkasan: [{ label: 'Total', nilai }], hs2: [], negara: [], pelabuhan: [] },
+    impor: { ringkasan: [{ label: 'Total', nilai }], hs2: [], negara: [], pelabuhan: [] },
+    neraca: { ringkasan: [{ label: 'Total', nilai }], rekap: [] },
+  };
+  const html = perdaganganPage({
+    user: { name: 'Admin', role: 'admin' }, tab: 'laporan',
+    provinsi: ['Papua'], province: 'Papua', tahun: 2026, bulan: 8,
+    periods: [{ tahun: 2026, bulan: 8 }], ringkasan: null, laporan,
+  });
+  assert.ok(html.includes('/export/perdagangan/bahan-tayang?tahun=2026&bulan=Agustus'),
+    'tautan bahan tayang perdagangan memakai tahun+bulan laporan');
+});
+
+test('kartu unduh Pariwisata memuat tautan Bahan Tayang', () => {
+  assert.ok(viewsSource.includes('/export/pariwisata/bahan-tayang'),
+    'kartu unduh pariwisata menautkan bahan tayang');
+});
+
+test('server memetakan rute bahan-tayang ke builder yang tepat', () => {
+  ['bahan-tayang-transport', 'bahan-tayang-pariwisata', 'bahan-tayang-perdagangan']
+    .forEach((kind) => assert.ok(serverSource.includes(kind), `builder ${kind} dipanggil`));
+});

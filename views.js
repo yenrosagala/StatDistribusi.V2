@@ -739,7 +739,11 @@ export function transportasiPage({ user, periods, selected, sections, tab = 'das
     scripts = adminView.scripts;
   } else if (periods.length) {
     const deck = selected
-      ? `<div class="toolbar"><a class="btn btn-primary" href="/export/transportasi/pptx?periode=${selected.thn}-${selected.bln}">📊 Unduh Deck PowerPoint</a></div>`
+      ? `<div class="toolbar">
+          <a class="btn btn-primary" href="/export/transportasi/pptx?periode=${selected.thn}-${selected.bln}">📊 Unduh Deck PowerPoint</a>
+          <a class="btn btn-ghost" href="/export/transportasi/pptx-template?periode=${selected.thn}-${selected.bln}">📋 Unduh Template PPTX</a>
+          <a class="btn btn-ghost" href="/export/transportasi/bahan-tayang?periode=${selected.thn}-${selected.bln}">🖼 Unduh Bahan Tayang</a>
+        </div>`
       : '';
     content = `${periodSelect(periods, selected)}${deck}${sections.map(sectionCard).join('')}`;
   } else {
@@ -1189,6 +1193,7 @@ export function perdaganganPage({ user, tab = 'ringkasan', provinsi, province, t
     </div>
     <div class="metric-row">
       <a class="btn btn-secondary" href="/export/perdagangan/xlsx?provinsi=${encodeURIComponent(province)}&tahun=${tahun}&bulan=${encodeURIComponent(bulanName)}">📊 Unduh Excel (Hanya Tabel)</a>
+      <a class="btn btn-secondary" href="/export/perdagangan/bahan-tayang?tahun=${tahun}&bulan=${encodeURIComponent(bulanName)}">🖼 Unduh Bahan Tayang (PPTX)</a>
       <button class="btn btn-primary" type="button" onclick="event.preventDefault(); document.getElementById('perdagangan-idml-form').submit(); return false;">🎨 Unduh Paket InDesign (.zip)</button>
     </div>
   </form>
@@ -2330,6 +2335,7 @@ function pariwisataExportCard(report) {
     </div>
     <div class="metric-row">
       <a class="btn btn-secondary" href="/export/pariwisata/xlsx?provinsi=${encodeURIComponent(report.province)}&tahun=${report.year}&bulan=${encodeURIComponent(bulan)}">📊 Unduh Excel (Tabel + Grafik)</a>
+      <a class="btn btn-secondary" href="/export/pariwisata/bahan-tayang?tahun=${report.year}&bulan=${encodeURIComponent(bulan)}">🖼 Unduh Bahan Tayang (PPTX)</a>
       <button class="btn btn-primary" id="pariwisata-idml-submit" type="button" onclick="event.preventDefault(); document.getElementById('pariwisata-idml-form').submit(); return false;">🎨 Unduh Paket InDesign (.zip)</button>
     </div>
   </form>
@@ -2736,6 +2742,11 @@ function mapScript() {  return `<script>
 })();
 </script>`;
 }
+
+// ===== Template-based PPTX download helper =====
+// The template deck is generated server-side (GET /export/transportasi/pptx-template)
+// so this page needs no client-side helper.
+
 
 export function errorPage(message) {
   return `<!doctype html>

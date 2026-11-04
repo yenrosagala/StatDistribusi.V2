@@ -996,6 +996,35 @@ def build_idml_exim(payload):
     return _paket_dengan_peringatan(paket, warnings)
 
 
+def build_pptx_template_sections(payload):
+    """Pour transport dashboard sections into templates/dashboard_template.pptx.
+
+    Takes the same payload as build_pptx (sections of charts/tables/narration)
+    and maps each section onto one data slide of the template, so the output is
+    an editable deck instead of a bare generated one.
+    """
+    slides = []
+    for sec in payload.get("sections", []):
+        head = f"Transportasi {sec['moda']} — {sec['bln']} {sec['thn']}"
+        charts = []
+        for i, chart in enumerate(sec.get("charts", [])[:2], start=1):
+            charts.append({"name": f"Chart{i}", "png": _chart_png(chart)})
+        tables = []
+        for i, table in enumerate(sec.get("tables", [])[:2], start=1):
+            tables.append({"name": f"Table{i}", "columns": table["columns"], "rows": table["rows"]})
+        slides.append({
+            "title": head,
+            "charts": charts,
+            "tables": tables,
+            "narrative": sec.get("narration", []),
+        })
+    return build_pptx_template({
+        "title": payload.get("title", "Dashboard Transportasi Papua"),
+        "subtitle": payload.get("subtitle", ""),
+        "slides": slides,
+    })
+
+
 def build_pptx_template(payload):
     """Fill the placeholder-based dashboard template with current data.
 
@@ -1099,9 +1128,15 @@ def build_pptx_template(payload):
     return buf.getvalue()
 
 
+import bahan_tayang
+
 BUILDERS = {
     "pptx": build_pptx,
     "pptx-template": build_pptx_template,
+    "pptx-template-sections": build_pptx_template_sections,
+    "bahan-tayang-transport": bahan_tayang.build_bahan_tayang_transport,
+    "bahan-tayang-pariwisata": bahan_tayang.build_bahan_tayang_pariwisata,
+    "bahan-tayang-perdagangan": bahan_tayang.build_bahan_tayang_perdagangan,
     "docx": build_docx,
     "xlsx-transport": build_xlsx_transport,
     "xlsx-pariwisata": build_xlsx_pariwisata,
